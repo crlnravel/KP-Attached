@@ -40,7 +40,7 @@ type AssessmentViewProps = {
 }
 
 const CONSENT_DISPLAY_STATEMENT =
-  'ATTACHED adalah sistem pendukung keputusan klinis yang membantu psikolog meninjau indikasi Attachment Style dari respons multimodal peserta. Dalam sesi ini, peserta akan melihat rangkaian stimulus gambar, memberikan respons verbal, dan mengisi kuesioner ECR-RS.\n\nAplikasi akan merekam respons video, respons audio, serta jawaban kuesioner untuk diproses oleh pipeline analisis lokal pada perangkat ini. Peserta memahami bahwa keluaran ATTACHED digunakan sebagai bahan pertimbangan klinis, bukan diagnosis otomatis dan bukan pengganti penilaian profesional psikolog.'
+  'ATTACHED adalah sistem pendukung keputusan klinis yang membantu psikolog meninjau indikasi Attachment Style dari respons multimodal peserta. Dalam sesi ini, peserta akan melihat rangkaian stimulus gambar, memberikan respons verbal, dan mengisi kuesioner ECR-RS.\n\nAplikasi akan merekam respons video, respons audio, serta jawaban kuesioner untuk diproses oleh pipeline analisis lokal pada perangkat ini. Setelah hasil keluar, psikolog dapat menandai apakah hasil sesuai atau tidak sesuai dengan penilaian klinis. Feedback tersebut disimpan sebagai bagian dari trace sesi lokal dan dapat dibuat menjadi report terstruktur untuk audit serta persiapan dataset pelatihan ulang model.\n\nPeserta memahami bahwa keluaran ATTACHED digunakan sebagai bahan pertimbangan klinis, bukan diagnosis otomatis dan bukan pengganti penilaian profesional psikolog. Jika peserta tidak menyetujui penyimpanan lanjutan setelah sesi selesai, data sesi, rekaman, dan report training lokal untuk sesi tersebut dapat dihapus dari perangkat ini.'
 
 export function AssessmentView({
   controller,
@@ -169,7 +169,7 @@ export function AssessmentView({
           onSubmitFeedback={(verdict, correctedLabel) =>
             void actions.submitResultFeedback(verdict, correctedLabel)
           }
-          onReturnToReview={() => void actions.returnToReview()}
+          onWipeSession={() => void actions.revokeConsent()}
           onExitAssessment={onExitAssessment}
         />
       )}
@@ -249,7 +249,10 @@ function ConsentStage({
           <span className="text-sm leading-6 text-foreground">
             Saya sudah menjelaskan cara kerja ATTACHED, jenis data yang direkam, dan batasan hasil
             sistem kepada peserta. Peserta memberikan persetujuan untuk mengikuti asesmen dan
-            mengizinkan data sesi digunakan dalam analisis lokal.
+            mengizinkan data sesi digunakan dalam analisis lokal, review klinisi, dan pembuatan
+            report lokal untuk audit atau persiapan pelatihan ulang model. Peserta juga memahami
+            bahwa data sesi dapat dihapus setelah hasil ditinjau bila tidak menyetujui penyimpanan
+            lanjutan.
           </span>
         </label>
       </AppPanel>
@@ -1034,7 +1037,7 @@ function ResultStage({
   result,
   saving,
   onSubmitFeedback,
-  onReturnToReview,
+  onWipeSession,
   onExitAssessment
 }: {
   result: AssessmentController['state']['result']
@@ -1043,13 +1046,14 @@ function ResultStage({
     verdict: 'correct' | 'incorrect',
     correctedLabel?: 'secure' | 'insecure' | null
   ) => void
-  onReturnToReview: () => void
+  onWipeSession: () => void
   onExitAssessment: () => void
 }): React.JSX.Element {
   const [pendingFeedback, setPendingFeedback] = useState<{
     verdict: 'correct' | 'incorrect'
     correctedLabel: 'secure' | 'insecure' | null
   } | null>(null)
+  const [wipeDialogOpen, setWipeDialogOpen] = useState(false)
   const classification = result ? (result.label === 'secure' ? 'Secure' : 'Insecure') : null
   const oppositeLabel =
     result?.label === 'secure' ? 'insecure' : result?.label === 'insecure' ? 'secure' : null
@@ -1188,7 +1192,10 @@ function ResultStage({
                       ? 'Hasil ditandai sesuai.'
                       : `Hasil dikoreksi menjadi ${result.feedback.correctedLabel === 'secure' ? 'Secure' : 'Insecure'}.`}
                   </p>
-                  <p>Feedback tersimpan pada trace sesi lokal.</p>
+                  <p>
+                    Feedback tersimpan pada trace sesi lokal dan report training di folder artifact
+                    aplikasi.
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
@@ -1287,14 +1294,50 @@ function ResultStage({
           type="button"
           variant="outline"
           className="rounded-xl bg-card"
-          onClick={onReturnToReview}
+          onClick={() => setWipeDialogOpen(true)}
         >
-          Tinjauan
+          Hapus data sesi
         </Button>
         <Button type="button" className="rounded-xl" onClick={onExitAssessment}>
           Selesai
         </Button>
       </div>
+
+      <Dialog open={wipeDialogOpen} onOpenChange={setWipeDialogOpen}>
+        <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl tracking-[-0.04em]">Hapus data sesi?</DialogTitle>
+            <DialogDescription className="text-base leading-7">
+              Gunakan ini jika peserta tidak menyetujui penyimpanan data setelah hasil dilihat.
+              Sesi, rekaman lokal, output model, dan report training untuk sesi ini akan dihapus
+              dari perangkat ini.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl bg-card"
+              disabled={saving}
+              onClick={() => setWipeDialogOpen(false)}
+            >
+              Kembali
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-xl"
+              disabled={saving}
+              onClick={() => {
+                setWipeDialogOpen(false)
+                onWipeSession()
+              }}
+            >
+              {saving ? 'Menghapus...' : 'Hapus'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

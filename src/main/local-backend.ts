@@ -91,11 +91,27 @@ type LocalSampleArtifacts = {
   warnings: string[]
 }
 
+type TrainingReportRow = {
+  session_id: string
+  subject: string
+  participant_id: string
+  model_label: string
+  clinician_feedback: string
+  clinician_label: string
+  training_label: string
+  confidence: string
+  probability_secure: string
+  probability_insecure: string
+  questionnaire_score: string
+  completed_at: string
+  feedback_submitted_at: string
+}
+
 const ATTACHMENT_EXPERIMENT = 'rerunacc6522b22_evaq'
 const MODEL_VERSION = 'v1.0'
 const CONSENT_VERSION = 'local-consent-v1'
 const CONSENT_STATEMENT =
-  'ATTACHED adalah sistem pendukung keputusan klinis yang membantu psikolog meninjau indikasi Attachment Style dari respons multimodal peserta. Dalam sesi ini, peserta akan melihat rangkaian stimulus gambar, memberikan respons verbal, dan mengisi kuesioner ECR-RS. Aplikasi akan merekam respons video, respons audio, serta jawaban kuesioner untuk diproses oleh pipeline analisis lokal pada perangkat ini. Peserta memahami bahwa keluaran ATTACHED digunakan sebagai bahan pertimbangan klinis, bukan diagnosis otomatis dan bukan pengganti penilaian profesional psikolog.'
+  'ATTACHED adalah sistem pendukung keputusan klinis yang membantu psikolog meninjau indikasi Attachment Style dari respons multimodal peserta. Dalam sesi ini, peserta akan melihat rangkaian stimulus gambar, memberikan respons verbal, dan mengisi kuesioner ECR-RS. Aplikasi akan merekam respons video, respons audio, serta jawaban kuesioner untuk diproses oleh pipeline analisis lokal pada perangkat ini. Setelah hasil keluar, psikolog dapat menandai apakah hasil sesuai atau tidak sesuai dengan penilaian klinis. Feedback tersebut disimpan sebagai bagian dari trace sesi lokal dan dapat dibuat menjadi report terstruktur untuk audit serta persiapan dataset pelatihan ulang model. Peserta memahami bahwa keluaran ATTACHED digunakan sebagai bahan pertimbangan klinis, bukan diagnosis otomatis dan bukan pengganti penilaian profesional psikolog. Jika peserta tidak menyetujui penyimpanan lanjutan setelah sesi selesai, data sesi, rekaman, dan report training lokal untuk sesi tersebut dapat dihapus dari perangkat ini.'
 const LOCAL_ADMIN_EMAIL = normalizeUsername(
   process.env.ATTACHED_ADMIN_EMAIL ?? 'admin@attached.local'
 )
@@ -227,6 +243,18 @@ function calculateEcrRsScores(
 
 function firstExistingPath(candidates: string[]): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function csvEscape(value: string): string {
+  if (!/[",\n\r]/.test(value)) {
+    return value
+  }
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+function toCsvRow(row: TrainingReportRow): string {
+  const headers = Object.keys(row) as Array<keyof TrainingReportRow>
+  return `${headers.join(',')}\n${headers.map((header) => csvEscape(row[header])).join(',')}\n`
 }
 
 function readZipEntry(zipPath: string, entryName: string): Buffer {
@@ -850,6 +878,7 @@ export class LocalBackend {
   private readonly databasePath: string
   private readonly sessionsRoot: string
   private readonly recordingArtifactsRoot: string
+  private readonly trainingReportsRoot: string
   private readonly db: DatabaseSync
   private readonly projectRoot: string
   private readonly modelRoot: string
@@ -864,9 +893,12 @@ export class LocalBackend {
     this.databasePath = join(this.dataRoot, 'attached-local.db')
     this.sessionsRoot = join(this.dataRoot, 'sessions')
     this.recordingArtifactsRoot = join(this.projectRoot, 'web', 'artifacts', 'recordings')
+    this.trainingReportsRoot = join(this.projectRoot, 'web', 'artifacts', 'training-reports')
 
     mkdirSync(this.dataRoot, { recursive: true })
     mkdirSync(this.sessionsRoot, { recursive: true })
+    mkdirSync(this.recordingArtifactsRoot, { recursive: true })
+    mkdirSync(this.trainingReportsRoot, { recursive: true })
 
     this.db = new DatabaseSync(this.databasePath)
     this.db.exec(`
@@ -1126,7 +1158,11 @@ export class LocalBackend {
     this.ensureLocalAdminUser()
 
     await fs.rm(this.sessionsRoot, { recursive: true, force: true })
+    await fs.rm(this.recordingArtifactsRoot, { recursive: true, force: true })
+    await fs.rm(this.trainingReportsRoot, { recursive: true, force: true })
     await fs.mkdir(this.sessionsRoot, { recursive: true })
+    await fs.mkdir(this.recordingArtifactsRoot, { recursive: true })
+    await fs.mkdir(this.trainingReportsRoot, { recursive: true })
 
     return this.buildAuthSnapshot(null)
   }
@@ -1729,9 +1765,11 @@ export class LocalBackend {
       session.failureMessage,
       session.completedAt ?? result.completedAt
     )
+    await this.writeTrainingFeedbackReport({ ...session, result })
     this.writeAuditEvent('feedback.submit', session.id, {
       verdict: input.verdict,
-      correctedLabel
+      correctedLabel,
+      reportRoot: this.trainingReportsRoot
     })
     return this.requireOwnedSession(session.id)
   }
@@ -2586,7 +2624,17 @@ export class LocalBackend {
     this.abortRequested.delete(sessionId)
     this.runningProcesses.delete(sessionId)
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
-    await fs.rm(this.getSessionDirectory(sessionId), { recursive: true, force: true })
+    await this.deleteSessionArtifacts(sessionId)
+  }
+
+  private async deleteSessionArtifacts(sessionId: string): Promise<void> {
+    const sessionLabel = sanitizeSubjectName(sessionId)
+    await Promise.all([
+      fs.rm(this.getSessionDirectory(sessionId), { recursive: true, force: true }),
+      fs.rm(join(this.recordingArtifactsRoot, sessionLabel), { recursive: true, force: true }),
+      fs.rm(join(this.trainingReportsRoot, `${sessionId}.json`), { force: true }),
+      fs.rm(join(this.trainingReportsRoot, `${sessionId}.csv`), { force: true })
+    ])
   }
 
   private getSessionDirectory(sessionId: string): string {
@@ -2795,6 +2843,92 @@ export class LocalBackend {
     }
 
     return { captures, warnings: Array.from(new Set(warnings)) }
+  }
+
+  private async writeTrainingFeedbackReport(session: SessionRecord): Promise<void> {
+    const result = session.result
+    const feedback = result?.feedback
+    if (!result || !feedback) {
+      return
+    }
+
+    const subject = sanitizeSubjectName(session.id)
+    const trainingLabel =
+      feedback.verdict === 'correct' ? result.label : (feedback.correctedLabel ?? result.label)
+    const row: TrainingReportRow = {
+      session_id: session.id,
+      subject,
+      participant_id: session.draft.participantId,
+      model_label: result.label,
+      clinician_feedback: feedback.verdict,
+      clinician_label: feedback.correctedLabel ?? result.label,
+      training_label: trainingLabel,
+      confidence: String(result.confidence),
+      probability_secure: String(result.probabilities.secure),
+      probability_insecure: String(result.probabilities.insecure),
+      questionnaire_score: session.draft.questionnaireAnswers.map((value) => value ?? '').join(':'),
+      completed_at: result.completedAt,
+      feedback_submitted_at: feedback.submittedAt
+    }
+    const report = {
+      schemaVersion: 1,
+      generatedAt: nowIso(),
+      purpose:
+        'Local clinical-feedback report for audit and future ATTACHED model training dataset reconstruction.',
+      consent: {
+        status: session.draft.consent.status,
+        version: session.draft.consent.version,
+        givenAt: session.draft.consent.givenAt,
+        revokedAt: session.draft.consent.revokedAt
+      },
+      session: {
+        id: session.id,
+        subject,
+        startedAt: session.startedAt,
+        completedAt: session.completedAt ?? result.completedAt,
+        participantId: session.draft.participantId
+      },
+      result: {
+        modelLabel: result.label,
+        modelLabelId: result.labelId,
+        modelVersion: result.modelVersion,
+        confidence: result.confidence,
+        probabilities: result.probabilities,
+        lowConfidence: result.lowConfidence,
+        lowConfidenceThreshold: result.lowConfidenceThreshold,
+        inferenceDurationMs: result.inferenceDurationMs,
+        attemptCount: result.attemptCount
+      },
+      clinicianFeedback: {
+        verdict: feedback.verdict,
+        correctedLabel: feedback.correctedLabel,
+        trainingLabel,
+        trainingLabelId: trainingLabel === 'insecure' ? 1 : 0,
+        submittedAt: feedback.submittedAt
+      },
+      questionnaire: {
+        answers: session.draft.questionnaireAnswers,
+        questScore: row.questionnaire_score,
+        ecrRsScores: result.ecrRsScores
+      },
+      artifacts: session.draft.captures.map((capture) => ({
+        slot: capture.slot,
+        exposure: capture.exposure,
+        response: capture.response,
+        audio: capture.audio
+      })),
+      modelOutput: result.output
+    }
+
+    await fs.mkdir(this.trainingReportsRoot, { recursive: true })
+    await Promise.all([
+      fs.writeFile(
+        join(this.trainingReportsRoot, `${session.id}.json`),
+        `${JSON.stringify(report, null, 2)}\n`,
+        'utf8'
+      ),
+      fs.writeFile(join(this.trainingReportsRoot, `${session.id}.csv`), toCsvRow(row), 'utf8')
+    ])
   }
 
   private isSessionReadyForInference(session: SessionRecord): boolean {
