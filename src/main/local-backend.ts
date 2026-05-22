@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
+import { platform } from 'node:os'
 
 import type {
   AdminSnapshot,
@@ -1608,15 +1609,30 @@ export class LocalBackend {
   }
 
   private resolveProjectRoot(): string {
+    const explicitModelRoot = process.env.ATTACHED_MODEL_ROOT
+      ? resolve(process.env.ATTACHED_MODEL_ROOT)
+      : null
+    const explicitProjectRoot =
+      explicitModelRoot && existsSync(join(explicitModelRoot, 'run_model'))
+        ? resolve(explicitModelRoot, '..')
+        : null
     const candidates = [
+      process.env.ATTACHED_PROJECT_ROOT ? resolve(process.env.ATTACHED_PROJECT_ROOT) : null,
+      explicitProjectRoot,
+      explicitModelRoot,
+      process.resourcesPath,
       resolve(app.getAppPath(), '..'),
       resolve(app.getAppPath(), '../..'),
       process.cwd(),
       resolve(process.cwd(), '..')
-    ]
+    ].filter((candidate): candidate is string => Boolean(candidate))
 
     for (const candidate of candidates) {
-      if (existsSync(join(candidate, 'data_model_KP', 'run_model', 'run_inference.sh'))) {
+      const modelRoot = join(candidate, 'data_model_KP')
+      if (
+        existsSync(join(modelRoot, 'run_model', 'run_inference.sh')) ||
+        existsSync(join(modelRoot, 'run_model', 'scripts', 'run_raw_pipeline_cross_platform.py'))
+      ) {
         return candidate
       }
     }
@@ -2109,16 +2125,88 @@ export class LocalBackend {
     }
   }
 
+  private isWindowsHost(): boolean {
+    return platform() === 'win32'
+  }
+
+  private resolveVenvPythonPath(venvName: string): string {
+    return join(
+      this.modelRoot,
+      'run_model',
+      venvName,
+      this.isWindowsHost() ? 'Scripts' : 'bin',
+      this.isWindowsHost() ? 'python.exe' : 'python'
+    )
+  }
+
+  private resolveAttachmentPythonPath(): string {
+    return process.env.ATTACHMENT_PYTHON ?? this.resolveVenvPythonPath('.venv')
+  }
+
+  private resolveMmactionPythonPath(): string {
+    const defaultVenv = platform() === 'linux' ? '.venv-mmaction' : '.venv-mmaction-modern'
+    return process.env.MMACTION_PYTHON ?? this.resolveVenvPythonPath(defaultVenv)
+  }
+
+  private resolveBundledModelLauncherPath(): string | null {
+    return firstExistingPath([
+      join(this.modelRoot, 'run_model', 'scripts', 'run_raw_pipeline_cross_platform.py'),
+      join(
+        this.projectRoot,
+        'web',
+        'resources',
+        'model-launchers',
+        'run_raw_pipeline_cross_platform.py'
+      ),
+      join(app.getAppPath(), 'resources', 'model-launchers', 'run_raw_pipeline_cross_platform.py'),
+      join(process.resourcesPath, 'model-launchers', 'run_raw_pipeline_cross_platform.py')
+    ])
+  }
+
+  private resolveRawPipelineLauncherPath(): string | null {
+    if (this.isWindowsHost()) {
+      return this.resolveBundledModelLauncherPath()
+    }
+
+    if (platform() === 'darwin') {
+      return firstExistingPath([join(this.modelRoot, 'run_model', 'run_raw_pipeline_mac.sh')])
+    }
+
+    return firstExistingPath([join(this.modelRoot, 'run_model', 'run_raw_pipeline.sh')])
+  }
+
+  private resolveRawPipelineLauncher(): { command: string; args: string[] } {
+    const launcherPath = this.resolveRawPipelineLauncherPath()
+    if (!launcherPath) {
+      throw new Error(
+        'Launcher analisis lokal belum tersedia untuk platform perangkat ini. Minta pengelola aplikasi menyiapkan paket model.'
+      )
+    }
+
+    if (this.isWindowsHost()) {
+      return {
+        command: this.resolveAttachmentPythonPath(),
+        args: [launcherPath]
+      }
+    }
+
+    return {
+      command: '/bin/zsh',
+      args: [launcherPath]
+    }
+  }
+
   private getModelRuntimeReadinessError(): string | null {
     let missingComponent = false
 
-    if (!existsSync(join(this.modelRoot, 'run_model', '.venv', 'bin', 'python'))) {
+    if (!existsSync(this.resolveAttachmentPythonPath())) {
       missingComponent = true
     }
-    if (!existsSync(join(this.modelRoot, 'run_model', '.venv-mmaction-modern', 'bin', 'python'))) {
+    if (!existsSync(this.resolveMmactionPythonPath())) {
       missingComponent = true
     }
-    if (!existsSync(join(this.modelRoot, 'run_model', 'run_raw_pipeline_mac.sh'))) {
+    const launcher = this.resolveRawPipelineLauncherPath()
+    if (!launcher) {
       missingComponent = true
     }
 
@@ -2623,23 +2711,21 @@ export class LocalBackend {
   ): Promise<void> {
     await fs.rm(outputRoot, { recursive: true, force: true })
     await fs.mkdir(outputRoot, { recursive: true })
+    const launcher = this.resolveRawPipelineLauncher()
 
-    const child = spawn(
-      '/bin/zsh',
-      [join(this.modelRoot, 'run_model', 'run_raw_pipeline_mac.sh')],
-      {
-        cwd: this.modelRoot,
-        env: {
-          ...process.env,
-          EXPOSURE_INPUT_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'exposure'),
-          VIDEO_INPUT_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'response-video'),
-          AUDIO_SOURCE_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'audio'),
-          QUIZ_CSV: quizCsvPath,
-          OUTPUT_ROOT: outputRoot,
-          ATTACHMENT_EXPERIMENT
-        }
+    const child = spawn(launcher.command, launcher.args, {
+      cwd: this.modelRoot,
+      env: {
+        ...process.env,
+        EXPOSURE_INPUT_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'exposure'),
+        VIDEO_INPUT_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'response-video'),
+        AUDIO_SOURCE_DIR: join(this.getSessionDirectory(sessionId), 'raw', 'audio'),
+        QUIZ_CSV: quizCsvPath,
+        OUTPUT_ROOT: outputRoot,
+        ATTACHED_MODEL_ROOT: this.modelRoot,
+        ATTACHMENT_EXPERIMENT
       }
-    )
+    })
     this.runningProcesses.set(sessionId, child)
 
     child.stdout.on('data', (chunk) => {

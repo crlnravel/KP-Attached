@@ -11,6 +11,19 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: resources/model-launchers
+    to: model-launchers
+  - from: ../data_model_KP
+    to: data_model_KP
+    filter:
+      - '**/*'
+      - '!**/__pycache__/**'
+      - '!**/.DS_Store'
+      - '!run_model/.uv-cache/**'
+      - '!run_model/.uv-python/**'
+      - '!run_model/tmp_*/**'
+      - '!run_model/logs/**'
 win:
   executableName: web
 nsis:
