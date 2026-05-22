@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { DatabaseSync } from 'node:sqlite'
 import { platform } from 'node:os'
+import { inflateRawSync } from 'node:zlib'
 
 import type {
   AdminSnapshot,
@@ -85,6 +86,11 @@ type InferenceJob = InferenceStatus & {
   outputRoot: string
 }
 
+type LocalSampleArtifacts = {
+  captures: StimulusCaptureStatus[]
+  warnings: string[]
+}
+
 const ATTACHMENT_EXPERIMENT = 'rerunacc6522b22_evaq'
 const MODEL_VERSION = 'v1.0'
 const CONSENT_VERSION = 'local-consent-v1'
@@ -98,11 +104,18 @@ const ACTIVE_SESSION_STATES: SessionState[] = ['draft', 'ready_for_inference', '
 const SESSION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000
 const SMOKE_TEST_MODE = process.env.ATTACHED_SMOKE_TEST === '1'
 const ECR_RS_RELATIONS = ['Ibu', 'Ayah', 'Pasangan', 'Teman dekat'] as const
+const NABILA_SAMPLE_DIR_NAME = 'Nabila Dhiya Permatasari'
+const NABILA_SAMPLE_WORKBOOK = 'Hasil Kuesioner Nabila.xlsx'
 const DEBUG_SAMPLE_IDENTITY: SessionIdentityInput = {
   participantId: 'DEBUG-001',
   participantName: 'Peserta Uji',
   age: '29',
   notes: 'Sesi uji otomatis dari contoh raw lokal.'
+}
+const NABILA_SAMPLE_IDENTITY: Omit<SessionIdentityInput, 'participantId'> = {
+  participantName: 'Contoh Data Nabila',
+  age: '',
+  notes: 'Sesi uji otomatis dari fixture raw lokal Nabila.'
 }
 
 function nowIso(): string {
@@ -214,6 +227,108 @@ function calculateEcrRsScores(
 
 function firstExistingPath(candidates: string[]): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function readZipEntry(zipPath: string, entryName: string): Buffer {
+  const data = readFileSync(zipPath)
+  let eocdOffset = -1
+  const minOffset = Math.max(0, data.length - 65_557)
+
+  for (let offset = data.length - 22; offset >= minOffset; offset -= 1) {
+    if (data.readUInt32LE(offset) === 0x06054b50) {
+      eocdOffset = offset
+      break
+    }
+  }
+
+  if (eocdOffset < 0) {
+    throw new Error(`Workbook tidak memiliki struktur ZIP yang valid: ${zipPath}`)
+  }
+
+  const entryCount = data.readUInt16LE(eocdOffset + 10)
+  const centralDirectoryOffset = data.readUInt32LE(eocdOffset + 16)
+  let offset = centralDirectoryOffset
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (data.readUInt32LE(offset) !== 0x02014b50) {
+      throw new Error(`Central directory workbook rusak: ${zipPath}`)
+    }
+
+    const compressionMethod = data.readUInt16LE(offset + 10)
+    const compressedSize = data.readUInt32LE(offset + 20)
+    const fileNameLength = data.readUInt16LE(offset + 28)
+    const extraLength = data.readUInt16LE(offset + 30)
+    const commentLength = data.readUInt16LE(offset + 32)
+    const localHeaderOffset = data.readUInt32LE(offset + 42)
+    const fileName = data.toString('utf8', offset + 46, offset + 46 + fileNameLength)
+
+    if (fileName === entryName) {
+      if (data.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+        throw new Error(`Local header workbook rusak untuk ${entryName}.`)
+      }
+
+      const localFileNameLength = data.readUInt16LE(localHeaderOffset + 26)
+      const localExtraLength = data.readUInt16LE(localHeaderOffset + 28)
+      const payloadOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength
+      const payload = data.subarray(payloadOffset, payloadOffset + compressedSize)
+
+      if (compressionMethod === 0) {
+        return Buffer.from(payload)
+      }
+      if (compressionMethod === 8) {
+        return inflateRawSync(payload)
+      }
+
+      throw new Error(`Workbook memakai kompresi ZIP yang belum didukung: ${compressionMethod}`)
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength
+  }
+
+  throw new Error(`Entry ${entryName} tidak ditemukan di workbook ${zipPath}.`)
+}
+
+function extractWorksheetNumbers(sheetXml: string): Map<string, number> {
+  const values = new Map<string, number>()
+  const cellRegex = /<c\b[^>]*\br="([A-Z]+\d+)"[^>]*>([\s\S]*?)<\/c>/g
+
+  for (const match of sheetXml.matchAll(cellRegex)) {
+    const [, reference, body] = match
+    const valueMatch = /<v>([^<]+)<\/v>/.exec(body)
+    if (!valueMatch) {
+      continue
+    }
+
+    const numericValue = Number(valueMatch[1])
+    if (Number.isFinite(numericValue)) {
+      values.set(reference, numericValue)
+    }
+  }
+
+  return values
+}
+
+function extractNabilaQuestionnaireAnswers(workbookPath: string): number[] {
+  const sheetXml = readZipEntry(workbookPath, 'xl/worksheets/sheet1.xml').toString('utf8')
+  const values = extractWorksheetNumbers(sheetXml)
+  const rows = [
+    ...Array.from({ length: 9 }, (_, index) => 13 + index),
+    ...Array.from({ length: 9 }, (_, index) => 23 + index),
+    ...Array.from({ length: 9 }, (_, index) => 33 + index),
+    ...Array.from({ length: 9 }, (_, index) => 43 + index)
+  ]
+  const answers = rows.map((row) => values.get(`B${row}`))
+
+  if (
+    answers.length !== QUESTION_COUNT ||
+    !answers.every((answer): answer is number =>
+      QUESTION_SCALE_VALUES.includes(answer as (typeof QUESTION_SCALE_VALUES)[number])
+    )
+  ) {
+    throw new Error('Workbook Nabila tidak berisi 36 skor ECR-RS valid pada skala 1-6.')
+  }
+
+  return answers
 }
 
 function serializeDraft(draft: SessionDraft): string {
@@ -1248,22 +1363,43 @@ export class LocalBackend {
 
     await this.ensureSessionDirectories(sessionId)
 
-    session.draft.participantId = DEBUG_SAMPLE_IDENTITY.participantId
-    session.draft.participantName = DEBUG_SAMPLE_IDENTITY.participantName
-    session.draft.age = DEBUG_SAMPLE_IDENTITY.age
-    session.draft.notes = DEBUG_SAMPLE_IDENTITY.notes
-    session.draft.questionnaireAnswers = createDebugQuestionnaireAnswers()
+    const nabilaSampleRoot = this.resolveNabilaSampleRoot()
+    let sampleSource = 'debug_fixture'
+    let sampleWarnings: string[] = []
+
+    if (nabilaSampleRoot) {
+      const sampleArtifacts = await this.writeNabilaSampleArtifacts(sessionId, nabilaSampleRoot)
+      session.draft.participantId = `NABILA-${sessionId.slice(-8).toUpperCase()}`
+      session.draft.participantName = NABILA_SAMPLE_IDENTITY.participantName
+      session.draft.age = NABILA_SAMPLE_IDENTITY.age
+      session.draft.notes = NABILA_SAMPLE_IDENTITY.notes
+      session.draft.questionnaireAnswers = extractNabilaQuestionnaireAnswers(
+        join(nabilaSampleRoot, NABILA_SAMPLE_WORKBOOK)
+      )
+      session.draft.captures = sampleArtifacts.captures
+      sampleSource = 'nabila_fixture'
+      sampleWarnings = sampleArtifacts.warnings
+    } else {
+      session.draft.participantId = DEBUG_SAMPLE_IDENTITY.participantId
+      session.draft.participantName = DEBUG_SAMPLE_IDENTITY.participantName
+      session.draft.age = DEBUG_SAMPLE_IDENTITY.age
+      session.draft.notes = DEBUG_SAMPLE_IDENTITY.notes
+      session.draft.questionnaireAnswers = createDebugQuestionnaireAnswers()
+      session.draft.captures = await this.writeDebugArtifacts(sessionId)
+    }
+
     session.draft.consent = {
       ...createEmptyConsent(),
       status: 'given',
       givenAt: nowIso()
     }
-    session.draft.captures = await this.writeDebugArtifacts(sessionId)
     session.draft.step = 'review'
 
     this.persistSession(sessionId, 'ready_for_inference', session.draft, null, null, null)
     this.writeAuditEvent('session.seed_debug', sessionId, {
-      captureCount: STIMULUS_COUNT
+      captureCount: STIMULUS_COUNT,
+      source: sampleSource,
+      warnings: sampleWarnings
     })
     return this.requireOwnedSession(sessionId)
   }
@@ -1660,6 +1796,68 @@ export class LocalBackend {
     return firstExistingPath([
       join(this.modelRoot, 'run_model', 'tmp_audio_test', 'in', 'alice_stimuli1.wav')
     ])
+  }
+
+  private resolveNabilaSampleRoot(): string | null {
+    const candidates = [
+      process.env.ATTACHED_SAMPLE_DATA_DIR ? resolve(process.env.ATTACHED_SAMPLE_DATA_DIR) : null,
+      join(this.projectRoot, NABILA_SAMPLE_DIR_NAME),
+      join(process.resourcesPath, 'sample-data', NABILA_SAMPLE_DIR_NAME)
+    ].filter((candidate): candidate is string => Boolean(candidate))
+
+    return (
+      candidates.find(
+        (candidate) =>
+          existsSync(join(candidate, NABILA_SAMPLE_WORKBOOK)) &&
+          existsSync(join(candidate, 'nabila_exposure1.mp4'))
+      ) ?? null
+    )
+  }
+
+  private resolveNabilaExposureSource(sampleRoot: string, slot: number): string | null {
+    return firstExistingPath([join(sampleRoot, `nabila_exposure${slot}.mp4`)])
+  }
+
+  private resolveNabilaResponseSource(
+    sampleRoot: string,
+    slot: number
+  ): { path: string; warning: string | null } | null {
+    const exactPath = firstExistingPath([
+      join(sampleRoot, `nabila stimuli${slot}.mp4`),
+      join(sampleRoot, `nabila_stimuli${slot}.mp4`)
+    ])
+
+    if (exactPath) {
+      return { path: exactPath, warning: null }
+    }
+
+    if (slot === 1) {
+      const fallbackPath = firstExistingPath([
+        join(sampleRoot, 'nabila stimuli2.mp4'),
+        join(sampleRoot, 'nabila_stimuli2.mp4')
+      ])
+
+      if (fallbackPath) {
+        return {
+          path: fallbackPath,
+          warning:
+            'Respons stimulus 1 tidak ditemukan di fixture Nabila; memakai klip respons pertama yang tersedia.'
+        }
+      }
+    }
+
+    return null
+  }
+
+  private resolveImportedAudioPath(sessionId: string, slot: number): string {
+    const slotLabel = String(slot).padStart(2, '0')
+    const subject = sanitizeSubjectName(sessionId)
+    return join(
+      this.getSessionDirectory(sessionId),
+      'raw',
+      'audio',
+      `${subject}_stimuli${slotLabel}.mp4`
+    )
   }
 
   private modelRuntimeReady(): boolean {
@@ -2530,6 +2728,73 @@ export class LocalBackend {
     }
 
     return captures
+  }
+
+  private async writeNabilaSampleArtifacts(
+    sessionId: string,
+    sampleRoot: string
+  ): Promise<LocalSampleArtifacts> {
+    const recordedAt = nowIso()
+    const captures = createEmptyCaptures()
+    const warnings: string[] = []
+
+    for (const capture of captures) {
+      const exposureSource = this.resolveNabilaExposureSource(sampleRoot, capture.slot)
+      const responseSource = this.resolveNabilaResponseSource(sampleRoot, capture.slot)
+
+      if (!exposureSource || !responseSource) {
+        const missing = [
+          !exposureSource ? 'exposure' : null,
+          !responseSource ? 'response/audio' : null
+        ]
+          .filter(Boolean)
+          .join(' dan ')
+        throw new Error(`Fixture Nabila belum lengkap untuk stimulus ${capture.slot}: ${missing}.`)
+      }
+
+      if (responseSource.warning) {
+        warnings.push(responseSource.warning)
+      }
+
+      const exposurePath = this.resolveArtifactPath(
+        sessionId,
+        capture.slot,
+        'exposure',
+        'video/mp4'
+      )
+      const responsePath = this.resolveArtifactPath(
+        sessionId,
+        capture.slot,
+        'response',
+        'video/mp4'
+      )
+      const audioPath = this.resolveImportedAudioPath(sessionId, capture.slot)
+
+      await fs.copyFile(exposureSource, exposurePath)
+      await fs.copyFile(responseSource.path, responsePath)
+      await fs.copyFile(responseSource.path, audioPath)
+
+      capture.exposure = {
+        path: exposurePath,
+        mimeType: 'video/mp4',
+        recordedAt,
+        sha256: sha256Hex(readFileSync(exposurePath))
+      }
+      capture.response = {
+        path: responsePath,
+        mimeType: 'video/mp4',
+        recordedAt,
+        sha256: sha256Hex(readFileSync(responsePath))
+      }
+      capture.audio = {
+        path: audioPath,
+        mimeType: 'video/mp4',
+        recordedAt,
+        sha256: sha256Hex(readFileSync(audioPath))
+      }
+    }
+
+    return { captures, warnings: Array.from(new Set(warnings)) }
   }
 
   private isSessionReadyForInference(session: SessionRecord): boolean {

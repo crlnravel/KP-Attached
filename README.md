@@ -66,3 +66,23 @@ pnpm build:win
 If the model bundle is stored outside the default layout, set
 `ATTACHED_MODEL_ROOT` to the absolute `data_model_KP` path before launching the
 app.
+
+## Local Sample Data
+
+In development mode, the test-data shortcut will use the local Nabila fixture
+when available. By default the app looks for:
+
+```text
+../Nabila Dhiya Permatasari
+```
+
+You can override that location with:
+
+```powershell
+$env:ATTACHED_SAMPLE_DATA_DIR="D:\ATTACHED\samples\Nabila Dhiya Permatasari"
+```
+
+The fixture is copied into the active session folder using the same raw media
+layout as a real assessment. The app reads the 36 ECR-RS answers directly from
+`Hasil Kuesioner Nabila.xlsx`. The raw participant media is not bundled into
+release builds by default.
