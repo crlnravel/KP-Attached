@@ -1,0 +1,4 @@
+declare const __APP_DEBUG__: boolean
+declare const __ATTACHED_REMOTE_AUTH_REQUEST_URL__: string
+declare const __ATTACHED_REMOTE_AUTH_SIGN_IN_URL__: string
+declare const __ATTACHED_REMOTE_AUTH_TIMEOUT_MS__: number
