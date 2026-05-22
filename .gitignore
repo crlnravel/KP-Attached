@@ -1,0 +1,9 @@
+node_modules
+dist
+out
+artifacts
+.env
+*.tsbuildinfo
+.DS_Store
+.eslintcache
+*.log*
