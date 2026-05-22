@@ -181,7 +181,8 @@ function createEmptyDraft(): SessionDraft {
     consent: createEmptyConsent(),
     step: 'identity',
     createdAt: timestamp,
-    updatedAt: timestamp
+    updatedAt: timestamp,
+    recordingsDeletedAt: null
   }
 }
 
@@ -385,7 +386,9 @@ function parseDraft(value: string): SessionDraft {
   const parsed = JSON.parse(value) as SessionDraft
   return {
     ...parsed,
-    consent: normalizeConsent(parsed.consent)
+    consent: normalizeConsent(parsed.consent),
+    recordingsDeletedAt:
+      typeof parsed.recordingsDeletedAt === 'string' ? parsed.recordingsDeletedAt : null
   }
 }
 
@@ -975,6 +978,9 @@ export class LocalBackend {
     this.registerHandler(CHANNELS.abortSession, (_event, sessionId: string) =>
       this.abortSession(sessionId)
     )
+    this.registerHandler(CHANNELS.deleteSessionRecordings, (_event, sessionId: string) =>
+      this.deleteSessionRecordings(sessionId)
+    )
     this.registerHandler(CHANNELS.seedDebugSession, (_event, sessionId: string) =>
       this.seedDebugSession(sessionId)
     )
@@ -1156,6 +1162,7 @@ export class LocalBackend {
       DELETE FROM audit_events;
     `)
     this.ensureLocalAdminUser()
+    this.compactDatabase()
 
     await fs.rm(this.sessionsRoot, { recursive: true, force: true })
     await fs.rm(this.recordingArtifactsRoot, { recursive: true, force: true })
@@ -1386,6 +1393,33 @@ export class LocalBackend {
     return this.requireOwnedSession(sessionId)
   }
 
+  async deleteSessionRecordings(sessionId: string): Promise<SessionRecord> {
+    const session = this.requireOwnedSession(sessionId)
+    if (session.state === 'running_inference') {
+      throw new Error('Tunggu analisis lokal selesai sebelum menghapus rekaman sesi.')
+    }
+
+    await this.deleteRecordingFiles(session)
+    session.draft.captures = createEmptyCaptures()
+    session.draft.recordingsDeletedAt = nowIso()
+
+    this.persistSession(
+      sessionId,
+      session.state,
+      session.draft,
+      session.result,
+      session.failureMessage,
+      session.completedAt
+    )
+    if (session.result?.feedback) {
+      await this.writeTrainingFeedbackReport({ ...session, draft: session.draft })
+    }
+    this.writeAuditEvent('recordings.delete', sessionId, {
+      keepAssessmentDetails: true
+    })
+    return this.requireOwnedSession(sessionId)
+  }
+
   async seedDebugSession(sessionId: string): Promise<SessionRecord> {
     if (!APP_DEBUG && !SMOKE_TEST_MODE) {
       throw new Error('Pengisian data uji hanya tersedia dalam mode uji atau smoke test.')
@@ -1413,6 +1447,7 @@ export class LocalBackend {
         join(nabilaSampleRoot, NABILA_SAMPLE_WORKBOOK)
       )
       session.draft.captures = sampleArtifacts.captures
+      session.draft.recordingsDeletedAt = null
       sampleSource = 'nabila_fixture'
       sampleWarnings = sampleArtifacts.warnings
     } else {
@@ -1422,6 +1457,7 @@ export class LocalBackend {
       session.draft.notes = DEBUG_SAMPLE_IDENTITY.notes
       session.draft.questionnaireAnswers = createDebugQuestionnaireAnswers()
       session.draft.captures = await this.writeDebugArtifacts(sessionId)
+      session.draft.recordingsDeletedAt = null
     }
 
     session.draft.consent = {
@@ -1597,6 +1633,7 @@ export class LocalBackend {
 
     capture[input.kind] = artifact
     draft.step = 'recording'
+    draft.recordingsDeletedAt = null
     draft.updatedAt = nowIso()
 
     const nextState = this.isSessionReadyForInference({ ...session, draft })
@@ -2624,7 +2661,16 @@ export class LocalBackend {
     this.abortRequested.delete(sessionId)
     this.runningProcesses.delete(sessionId)
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
+    this.compactDatabase()
     await this.deleteSessionArtifacts(sessionId)
+  }
+
+  private compactDatabase(): void {
+    try {
+      this.db.exec('VACUUM')
+    } catch {
+      // Vacuum is a best-effort privacy cleanup after local deletes.
+    }
   }
 
   private async deleteSessionArtifacts(sessionId: string): Promise<void> {
@@ -2634,6 +2680,31 @@ export class LocalBackend {
       fs.rm(join(this.recordingArtifactsRoot, sessionLabel), { recursive: true, force: true }),
       fs.rm(join(this.trainingReportsRoot, `${sessionId}.json`), { force: true }),
       fs.rm(join(this.trainingReportsRoot, `${sessionId}.csv`), { force: true })
+    ])
+  }
+
+  private async deleteRecordingFiles(session: SessionRecord): Promise<void> {
+    const rawDirectories = [
+      join(this.getSessionDirectory(session.id), 'raw', 'exposure'),
+      join(this.getSessionDirectory(session.id), 'raw', 'response-video'),
+      join(this.getSessionDirectory(session.id), 'raw', 'audio')
+    ]
+    const artifactPaths = session.draft.captures.flatMap((capture) =>
+      [capture.exposure?.path, capture.response?.path, capture.audio?.path].filter(
+        (path): path is string => Boolean(path)
+      )
+    )
+
+    await Promise.all([
+      ...artifactPaths.map((path) => fs.rm(path, { force: true })),
+      ...rawDirectories.map(async (directory) => {
+        await fs.rm(directory, { recursive: true, force: true })
+        await fs.mkdir(directory, { recursive: true })
+      }),
+      fs.rm(join(this.recordingArtifactsRoot, sanitizeSubjectName(session.id)), {
+        recursive: true,
+        force: true
+      })
     ])
   }
 

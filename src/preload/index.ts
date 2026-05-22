@@ -53,6 +53,8 @@ const attachedApi = {
       ipcRenderer.invoke(CHANNELS.getSession, sessionId),
     abort: (sessionId: string): Promise<SessionRecord> =>
       ipcRenderer.invoke(CHANNELS.abortSession, sessionId),
+    deleteRecordings: (sessionId: string): Promise<SessionRecord> =>
+      ipcRenderer.invoke(CHANNELS.deleteSessionRecordings, sessionId),
     seedDebug: (sessionId: string): Promise<SessionRecord> =>
       ipcRenderer.invoke(CHANNELS.seedDebugSession, sessionId),
     updateIdentity: (sessionId: string, input: SessionIdentityInput): Promise<SessionRecord> =>

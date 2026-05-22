@@ -14,6 +14,7 @@ export const CHANNELS = {
   createSession: 'attached:sessions:create',
   getSession: 'attached:sessions:get',
   abortSession: 'attached:sessions:abort',
+  deleteSessionRecordings: 'attached:sessions:delete-recordings',
   seedDebugSession: 'attached:sessions:seed-debug',
   updateIdentity: 'attached:sessions:update-identity',
   submitConsent: 'attached:sessions:submit-consent',

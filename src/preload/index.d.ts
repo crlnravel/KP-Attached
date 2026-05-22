@@ -43,6 +43,7 @@ type AttachedApi = {
     create: () => Promise<SessionRecord>
     get: (sessionId: string) => Promise<SessionRecord>
     abort: (sessionId: string) => Promise<SessionRecord>
+    deleteRecordings: (sessionId: string) => Promise<SessionRecord>
     seedDebug: (sessionId: string) => Promise<SessionRecord>
     updateIdentity: (sessionId: string, input: SessionIdentityInput) => Promise<SessionRecord>
     submitConsent: (input: SubmitConsentInput) => Promise<SessionRecord>

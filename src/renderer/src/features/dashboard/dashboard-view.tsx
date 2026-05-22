@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeftIcon, ArrowUpDownIcon, CalendarClockIcon, SearchIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ArrowUpDownIcon,
+  CalendarClockIcon,
+  SearchIcon,
+  Trash2Icon
+} from 'lucide-react'
 
 import {
   AppPanel,
@@ -35,6 +41,7 @@ type DashboardViewProps = {
   error: string | null
   onOpenSession: (sessionId: string) => void
   onAbortSession: (sessionId: string) => Promise<void>
+  onDeleteSessionRecordings: (sessionId: string) => Promise<void>
 }
 
 enum AssessmentStatus {
@@ -88,7 +95,8 @@ export function DashboardView({
   isLoading,
   error,
   onOpenSession,
-  onAbortSession
+  onAbortSession,
+  onDeleteSessionRecordings
 }: DashboardViewProps): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | AssessmentStatus>('all')
@@ -98,7 +106,13 @@ export function DashboardView({
   })
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [confirmAbortSessionId, setConfirmAbortSessionId] = useState<string | null>(null)
+  const [confirmDeleteRecordingsSessionId, setConfirmDeleteRecordingsSessionId] = useState<
+    string | null
+  >(null)
   const [busyAbortSessionId, setBusyAbortSessionId] = useState<string | null>(null)
+  const [busyDeleteRecordingsSessionId, setBusyDeleteRecordingsSessionId] = useState<string | null>(
+    null
+  )
   const [actionError, setActionError] = useState<string | null>(null)
 
   const historyRows = useMemo<HistoryRow[]>(() => {
@@ -163,6 +177,25 @@ export function DashboardView({
     }
   }
 
+  const submitDeleteRecordings = async (): Promise<void> => {
+    if (!confirmDeleteRecordingsSessionId) {
+      return
+    }
+
+    setBusyDeleteRecordingsSessionId(confirmDeleteRecordingsSessionId)
+    setActionError(null)
+    try {
+      await onDeleteSessionRecordings(confirmDeleteRecordingsSessionId)
+      setConfirmDeleteRecordingsSessionId(null)
+    } catch (deleteError) {
+      setActionError(
+        deleteError instanceof Error ? deleteError.message : 'Gagal menghapus rekaman sesi.'
+      )
+    } finally {
+      setBusyDeleteRecordingsSessionId(null)
+    }
+  }
+
   if (selectedSession) {
     return (
       <>
@@ -171,6 +204,8 @@ export function DashboardView({
           onBack={() => setSelectedSessionId(null)}
           onResumeSession={() => onOpenSession(selectedSession.id)}
           onAbortSession={() => setConfirmAbortSessionId(selectedSession.id)}
+          onDeleteRecordings={() => setConfirmDeleteRecordingsSessionId(selectedSession.id)}
+          actionError={actionError}
         />
         <Dialog
           open={confirmAbortSessionId !== null}
@@ -213,6 +248,12 @@ export function DashboardView({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <DeleteRecordingsDialog
+          sessionId={confirmDeleteRecordingsSessionId}
+          busySessionId={busyDeleteRecordingsSessionId}
+          onClose={() => setConfirmDeleteRecordingsSessionId(null)}
+          onConfirm={() => void submitDeleteRecordings()}
+        />
       </>
     )
   }
@@ -410,12 +451,16 @@ function AssessmentDetailPage({
   session,
   onBack,
   onResumeSession,
-  onAbortSession
+  onAbortSession,
+  onDeleteRecordings,
+  actionError
 }: {
   session: SessionRecord
   onBack: () => void
   onResumeSession: () => void
   onAbortSession: () => void
+  onDeleteRecordings: () => void
+  actionError: string | null
 }): React.JSX.Element {
   const status = resolveAssessmentStatus(session)
   const statusToneValue = statusTone(status)
@@ -426,6 +471,10 @@ function AssessmentDetailPage({
   const capturedCount = session.draft.captures.filter(
     (capture) => capture.exposure && capture.response && capture.audio
   ).length
+  const hasRecordings = session.draft.captures.some(
+    (capture) => capture.exposure || capture.response || capture.audio
+  )
+  const recordingsDeletedAt = session.draft.recordingsDeletedAt
   const answeredCount = session.draft.questionnaireAnswers.filter((value) => value !== null).length
 
   return (
@@ -535,16 +584,43 @@ function AssessmentDetailPage({
                 value={`${capturedCount} / ${session.draft.captures.length}`}
               />
               <InfoRow
+                label="Status rekaman"
+                value={
+                  recordingsDeletedAt
+                    ? `Dihapus ${formatDateTime(recordingsDeletedAt)}`
+                    : hasRecordings
+                      ? 'Tersimpan lokal'
+                      : 'Belum tersedia'
+                }
+              />
+              <InfoRow
                 label="Kuesioner"
                 value={`${answeredCount} / ${session.draft.questionnaireAnswers.length}`}
               />
               <InfoRow label="Status sesi" value={humanizeToken(session.state)} />
+              {hasRecordings ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2 rounded-xl border-destructive/25 bg-card text-destructive hover:bg-destructive/8 hover:text-destructive"
+                  onClick={onDeleteRecordings}
+                >
+                  <Trash2Icon data-icon="inline-start" />
+                  Hapus rekaman
+                </Button>
+              ) : null}
             </AppPanel>
           </div>
 
           {session.failureMessage ? (
             <StatusNotice tone="error" title="Masalah sesi">
               {session.failureMessage}
+            </StatusNotice>
+          ) : null}
+
+          {actionError ? (
+            <StatusNotice tone="error" title="Aksi sesi gagal">
+              {actionError}
             </StatusNotice>
           ) : null}
 
@@ -570,6 +646,55 @@ function AssessmentDetailPage({
         </div>
       </div>
     </div>
+  )
+}
+
+function DeleteRecordingsDialog({
+  sessionId,
+  busySessionId,
+  onClose,
+  onConfirm
+}: {
+  sessionId: string | null
+  busySessionId: string | null
+  onClose: () => void
+  onConfirm: () => void
+}): React.JSX.Element {
+  const busy = Boolean(sessionId && busySessionId === sessionId)
+
+  return (
+    <Dialog
+      open={sessionId !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose()
+        }
+      }}
+    >
+      <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-2xl tracking-[-0.04em]">Hapus rekaman sesi?</DialogTitle>
+          <DialogDescription className="text-base leading-7">
+            File exposure, respons video, dan audio mikrofon akan dihapus dari perangkat ini. Detail
+            asesmen, kuesioner, hasil model, dan feedback klinisi tetap tersimpan.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" className="rounded-xl bg-card" onClick={onClose}>
+            Kembali
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            className="rounded-xl"
+            disabled={!sessionId || busy}
+            onClick={onConfirm}
+          >
+            {busy ? 'Menghapus...' : 'Hapus rekaman'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

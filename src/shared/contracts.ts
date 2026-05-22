@@ -179,6 +179,7 @@ export type SessionDraft = {
   step: SessionStep
   createdAt: string
   updatedAt: string
+  recordingsDeletedAt: string | null
 }
 
 export type ResultFeedback = {

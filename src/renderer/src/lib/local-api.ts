@@ -48,6 +48,8 @@ export const attachedApi = {
     create: (): Promise<SessionRecord> => window.attached.sessions.create(),
     get: (sessionId: string): Promise<SessionRecord> => window.attached.sessions.get(sessionId),
     abort: (sessionId: string): Promise<SessionRecord> => window.attached.sessions.abort(sessionId),
+    deleteRecordings: (sessionId: string): Promise<SessionRecord> =>
+      window.attached.sessions.deleteRecordings(sessionId),
     seedDebug: (sessionId: string): Promise<SessionRecord> =>
       window.attached.sessions.seedDebug(sessionId),
     updateIdentity: (sessionId: string, input: SessionIdentityInput): Promise<SessionRecord> =>

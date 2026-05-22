@@ -549,6 +549,14 @@ function App(): React.JSX.Element {
     [activeSessionId, refreshDashboard]
   )
 
+  const handleDeleteSessionRecordings = useCallback(
+    async (sessionId: string): Promise<void> => {
+      await attachedApi.sessions.deleteRecordings(sessionId)
+      await refreshDashboard()
+    },
+    [refreshDashboard]
+  )
+
   const handleReviewAccessRequest = (input: ReviewAccessRequestInput): void => {
     setAdminPending(true)
     setAdminError(null)
@@ -643,6 +651,7 @@ function App(): React.JSX.Element {
             error={dashboardError}
             onOpenSession={handleOpenSession}
             onAbortSession={handleAbortSession}
+            onDeleteSessionRecordings={handleDeleteSessionRecordings}
           />
         )}
         {view === 'admin' && (
