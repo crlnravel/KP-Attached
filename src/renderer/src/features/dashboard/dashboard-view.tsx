@@ -42,6 +42,7 @@ type DashboardViewProps = {
   onOpenSession: (sessionId: string) => void
   onAbortSession: (sessionId: string) => Promise<void>
   onDeleteSessionRecordings: (sessionId: string) => Promise<void>
+  onSavePostAssessmentNote: (sessionId: string, text: string) => Promise<void>
 }
 
 enum AssessmentStatus {
@@ -52,17 +53,19 @@ enum AssessmentStatus {
   Cancelled = 'Dibatalkan'
 }
 
-type SortKey = 'name' | 'id' | 'date' | 'result'
+type SortKey = 'name' | 'id' | 'date' | 'count'
 type SortDirection = 'asc' | 'desc'
 
-type HistoryRow = {
-  session: SessionRecord
-  sessionId: string
+type PatientRow = {
+  key: string
   name: string
   participantId: string
+  age: string
+  notes: string
   date: string
   sortTime: number
-  status: AssessmentStatus
+  assessmentCount: number
+  sessions: SessionRecord[]
 }
 
 function isActiveSession(session: SessionRecord): boolean {
@@ -73,21 +76,40 @@ function isActiveSession(session: SessionRecord): boolean {
   )
 }
 
-const statusOptions: Array<{ value: 'all' | AssessmentStatus; label: string }> = [
-  { value: 'all', label: 'Semua' },
-  { value: AssessmentStatus.Secure, label: AssessmentStatus.Secure },
-  { value: AssessmentStatus.Insecure, label: AssessmentStatus.Insecure },
-  { value: AssessmentStatus.Error, label: AssessmentStatus.Error },
-  { value: AssessmentStatus.Unfinished, label: AssessmentStatus.Unfinished },
-  { value: AssessmentStatus.Cancelled, label: AssessmentStatus.Cancelled }
-]
+function getPatientKey(session: SessionRecord): string {
+  return (
+    session.draft.participantId.trim().toLowerCase() ||
+    session.draft.participantName.trim().toLowerCase() ||
+    session.id
+  )
+}
 
-const statusSortOrder: Record<AssessmentStatus, number> = {
-  [AssessmentStatus.Secure]: 1,
-  [AssessmentStatus.Insecure]: 2,
-  [AssessmentStatus.Error]: 3,
-  [AssessmentStatus.Unfinished]: 4,
-  [AssessmentStatus.Cancelled]: 5
+function buildPatientRows(sessions: SessionRecord[]): PatientRow[] {
+  const groups = new Map<string, SessionRecord[]>()
+
+  for (const session of sessions) {
+    const key = getPatientKey(session)
+    groups.set(key, [...(groups.get(key) ?? []), session])
+  }
+
+  return Array.from(groups.entries()).map(([key, groupSessions]) => {
+    const sortedSessions = [...groupSessions].sort(
+      (first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
+    )
+    const latestSession = sortedSessions[0]
+
+    return {
+      key,
+      name: latestSession.draft.participantName || 'Peserta belum diisi',
+      participantId: latestSession.draft.participantId || latestSession.id,
+      age: latestSession.draft.age,
+      notes: latestSession.draft.notes,
+      date: formatDate(latestSession.updatedAt),
+      sortTime: new Date(latestSession.updatedAt).getTime(),
+      assessmentCount: sortedSessions.length,
+      sessions: sortedSessions
+    }
+  })
 }
 
 export function DashboardView({
@@ -96,14 +118,15 @@ export function DashboardView({
   error,
   onOpenSession,
   onAbortSession,
-  onDeleteSessionRecordings
+  onDeleteSessionRecordings,
+  onSavePostAssessmentNote
 }: DashboardViewProps): React.JSX.Element {
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | AssessmentStatus>('all')
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
     key: 'date',
     direction: 'desc'
   })
+  const [selectedPatientKey, setSelectedPatientKey] = useState<string | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [confirmAbortSessionId, setConfirmAbortSessionId] = useState<string | null>(null)
   const [confirmDeleteRecordingsSessionId, setConfirmDeleteRecordingsSessionId] = useState<
@@ -113,18 +136,11 @@ export function DashboardView({
   const [busyDeleteRecordingsSessionId, setBusyDeleteRecordingsSessionId] = useState<string | null>(
     null
   )
+  const [busyNoteSessionId, setBusyNoteSessionId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const historyRows = useMemo<HistoryRow[]>(() => {
-    return (snapshot?.sessions ?? []).map((session) => ({
-      session,
-      sessionId: session.id,
-      name: session.draft.participantName || 'Peserta belum diisi',
-      participantId: session.draft.participantId || session.id,
-      date: formatDate(session.updatedAt),
-      sortTime: new Date(session.updatedAt).getTime(),
-      status: resolveAssessmentStatus(session)
-    }))
+  const patientRows = useMemo<PatientRow[]>(() => {
+    return buildPatientRows(snapshot?.sessions ?? [])
   }, [snapshot?.sessions])
 
   const activeSession = useMemo(() => {
@@ -132,24 +148,25 @@ export function DashboardView({
   }, [snapshot?.sessions])
 
   const selectedSession = useMemo(() => {
-    return historyRows.find((row) => row.sessionId === selectedSessionId)?.session ?? null
-  }, [historyRows, selectedSessionId])
+    return snapshot?.sessions.find((session) => session.id === selectedSessionId) ?? null
+  }, [selectedSessionId, snapshot?.sessions])
 
-  const filteredHistory = useMemo(() => {
+  const selectedPatient = useMemo(() => {
+    return patientRows.find((row) => row.key === selectedPatientKey) ?? null
+  }, [patientRows, selectedPatientKey])
+
+  const filteredPatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
-    const visibleRows = historyRows.filter((row) => {
-      const matchesQuery =
+    const visibleRows = patientRows.filter((row) => {
+      return (
         normalizedQuery.length === 0 ||
         row.name.toLowerCase().includes(normalizedQuery) ||
-        row.participantId.toLowerCase().includes(normalizedQuery) ||
-        row.status.toLowerCase().includes(normalizedQuery)
-
-      const matchesStatus = statusFilter === 'all' || row.status === statusFilter
-      return matchesQuery && matchesStatus
+        row.participantId.toLowerCase().includes(normalizedQuery)
+      )
     })
 
     return [...visibleRows].sort((a, b) => compareRows(a, b, sort))
-  }, [historyRows, query, sort, statusFilter])
+  }, [patientRows, query, sort])
 
   const handleSort = (key: SortKey): void => {
     setSort((current) => ({
@@ -196,6 +213,20 @@ export function DashboardView({
     }
   }
 
+  const submitPostAssessmentNote = async (sessionId: string, text: string): Promise<void> => {
+    setBusyNoteSessionId(sessionId)
+    setActionError(null)
+    try {
+      await onSavePostAssessmentNote(sessionId, text)
+    } catch (noteError) {
+      setActionError(
+        noteError instanceof Error ? noteError.message : 'Gagal menyimpan catatan pasca-asesmen.'
+      )
+    } finally {
+      setBusyNoteSessionId(null)
+    }
+  }
+
   if (selectedSession) {
     return (
       <>
@@ -205,6 +236,10 @@ export function DashboardView({
           onResumeSession={() => onOpenSession(selectedSession.id)}
           onAbortSession={() => setConfirmAbortSessionId(selectedSession.id)}
           onDeleteRecordings={() => setConfirmDeleteRecordingsSessionId(selectedSession.id)}
+          onSavePostAssessmentNote={(text) =>
+            void submitPostAssessmentNote(selectedSession.id, text)
+          }
+          noteSaving={busyNoteSessionId === selectedSession.id}
           actionError={actionError}
         />
         <Dialog
@@ -258,6 +293,16 @@ export function DashboardView({
     )
   }
 
+  if (selectedPatient) {
+    return (
+      <PatientDetailPage
+        patient={selectedPatient}
+        onBack={() => setSelectedPatientKey(null)}
+        onOpenAssessment={setSelectedSessionId}
+      />
+    )
+  }
+
   return (
     <div className="detail-enter flex h-full min-h-0 flex-col gap-8">
       <PageHeading eyebrow={`${getGreeting()}, ${snapshot?.user.fullName ?? 'R'}`} title="Dasbor" />
@@ -272,25 +317,11 @@ export function DashboardView({
             hideLabel
             value={query}
             onChange={setQuery}
-            placeholder="Cari nama, ID, atau status"
+            placeholder="Cari nama atau ID pasien"
             icon={SearchIcon}
             className="w-full max-w-sm"
             inputClassName="bg-card"
           />
-          <label className="flex w-full max-w-[13rem] flex-col gap-2 text-sm font-medium text-foreground">
-            <span className="sr-only">Filter status</span>
-            <select
-              className="h-12 rounded-[18px] border border-border/80 bg-card/80 px-4 text-sm text-foreground shadow-none outline-none transition focus-visible:ring-2 focus-visible:ring-primary/25"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as 'all' | AssessmentStatus)}
-            >
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         {error ? (
@@ -346,38 +377,43 @@ export function DashboardView({
         ) : null}
 
         <div className="min-h-[24rem] flex-1 overflow-y-auto rounded-[18px] border border-border/60 bg-card/80">
-          <Table className="min-w-[840px] table-fixed">
+          <Table className="min-w-[1120px] table-fixed">
             <colgroup>
               <col className="w-[34%]" />
-              <col className="w-[27%]" />
-              <col className="w-[20%]" />
-              <col className="w-[19%]" />
+              <col className="w-[24%]" />
+              <col className="w-[18%]" />
+              <col className="w-[24%]" />
             </colgroup>
             <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
               <TableRow className="border-border hover:bg-transparent">
-                <SortableHead label="Nama" sortKey="name" sort={sort} onSort={handleSort} />
+                <SortableHead label="NAMA" sortKey="name" sort={sort} onSort={handleSort} />
                 <SortableHead label="ID" sortKey="id" sort={sort} onSort={handleSort} />
-                <SortableHead label="Tanggal" sortKey="date" sort={sort} onSort={handleSort} />
                 <SortableHead
-                  label="Hasil"
-                  sortKey="result"
+                  label="JUMLAH ASESMEN"
+                  sortKey="count"
                   sort={sort}
                   onSort={handleSort}
                   align="right"
                 />
+                <SortableHead
+                  label="TANGGAL ASESMEN TERAKHIR"
+                  sortKey="date"
+                  sort={sort}
+                  onSort={handleSort}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredHistory.map((row) => (
+              {filteredPatients.map((row) => (
                 <TableRow
-                  key={row.sessionId}
+                  key={row.key}
                   tabIndex={0}
                   className="cursor-pointer border-border transition hover:bg-muted/35 focus-visible:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                  onClick={() => setSelectedSessionId(row.sessionId)}
+                  onClick={() => setSelectedPatientKey(row.key)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      setSelectedSessionId(row.sessionId)
+                      setSelectedPatientKey(row.key)
                     }
                   }}
                 >
@@ -385,16 +421,18 @@ export function DashboardView({
                   <TableCell className="truncate text-muted-foreground">
                     {row.participantId}
                   </TableCell>
-                  <TableCell className="text-foreground">{row.date}</TableCell>
                   <TableCell className="text-right">
-                    <StatusBadge tone={statusTone(row.status)}>{row.status}</StatusBadge>
+                    <span className="text-sm font-medium text-foreground">
+                      {row.assessmentCount}
+                    </span>
                   </TableCell>
+                  <TableCell className="text-foreground">{row.date}</TableCell>
                 </TableRow>
               ))}
-              {filteredHistory.length === 0 && (
+              {filteredPatients.length === 0 && (
                 <TableRow className="border-border hover:bg-transparent">
                   <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                    Tidak ada catatan yang cocok.
+                    Tidak ada pasien yang cocok.
                   </TableCell>
                 </TableRow>
               )}
@@ -447,12 +485,114 @@ export function DashboardView({
   )
 }
 
+function PatientDetailPage({
+  patient,
+  onBack,
+  onOpenAssessment
+}: {
+  patient: PatientRow
+  onBack: () => void
+  onOpenAssessment: (sessionId: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="detail-enter flex h-full min-h-0 flex-col gap-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Button type="button" variant="outline" className="rounded-xl bg-card" onClick={onBack}>
+          <ArrowLeftIcon data-icon="inline-start" />
+          Kembali ke dasbor
+        </Button>
+        <StatusBadge tone="info" className="px-4 py-1.5 text-sm">
+          {patient.assessmentCount} asesmen
+        </StatusBadge>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="grid gap-8 pb-2">
+          <PageHeading
+            eyebrow="Detail pasien"
+            title={patient.name}
+            description={`ID ${patient.participantId}`}
+          />
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <AppPanel
+              title="Profil pasien"
+              className="lg:col-span-2"
+              contentClassName="grid gap-3 md:grid-cols-2"
+            >
+              <InfoRow label="Nama" value={patient.name} />
+              <InfoRow label="ID" value={patient.participantId} />
+              <InfoRow label="Usia" value={patient.age || 'Belum diisi'} />
+              <InfoRow label="Catatan" value={patient.notes || 'Tidak ada catatan'} />
+            </AppPanel>
+            <AppPanel title="Ringkasan" contentClassName="flex flex-col gap-3">
+              <InfoRow label="Jumlah asesmen" value={String(patient.assessmentCount)} />
+              <InfoRow label="Terakhir diperbarui" value={patient.date} />
+            </AppPanel>
+          </div>
+
+          <AppPanel title="Riwayat asesmen" contentClassName="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Sesi</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-6 text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {patient.sessions.map((session) => {
+                  const status = resolveAssessmentStatus(session)
+                  return (
+                    <TableRow key={session.id}>
+                      <TableCell className="pl-6">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium text-foreground">{session.id}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {session.postAssessmentNote.text
+                              ? 'Memiliki catatan pasca-asesmen'
+                              : 'Belum ada catatan pasca-asesmen'}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDateTime(session.updatedAt)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tone={statusTone(status)}>{status}</StatusBadge>
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl bg-card"
+                          onClick={() => onOpenAssessment(session.id)}
+                        >
+                          Detail
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </AppPanel>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AssessmentDetailPage({
   session,
   onBack,
   onResumeSession,
   onAbortSession,
   onDeleteRecordings,
+  onSavePostAssessmentNote,
+  noteSaving,
   actionError
 }: {
   session: SessionRecord
@@ -460,6 +600,8 @@ function AssessmentDetailPage({
   onResumeSession: () => void
   onAbortSession: () => void
   onDeleteRecordings: () => void
+  onSavePostAssessmentNote: (text: string) => void
+  noteSaving: boolean
   actionError: string | null
 }): React.JSX.Element {
   const status = resolveAssessmentStatus(session)
@@ -476,6 +618,8 @@ function AssessmentDetailPage({
   )
   const recordingsDeletedAt = session.draft.recordingsDeletedAt
   const answeredCount = session.draft.questionnaireAnswers.filter((value) => value !== null).length
+  const [noteDraft, setNoteDraft] = useState(session.postAssessmentNote.text)
+  const noteDirty = noteDraft !== session.postAssessmentNote.text
 
   return (
     <div className="detail-enter flex h-full min-h-0 flex-col gap-8">
@@ -612,6 +756,34 @@ function AssessmentDetailPage({
             </AppPanel>
           </div>
 
+          {session.result ? (
+            <AppPanel title="Catatan pasca-asesmen" contentClassName="flex flex-col gap-4">
+              <AppTextField
+                label="Catatan pasca-asesmen"
+                hideLabel
+                value={noteDraft}
+                onChange={setNoteDraft}
+                placeholder="Tambahkan catatan klinis pasca-asesmen, misalnya kecenderungan avoidant/anxious atau konteks attachment yang perlu ditinjau."
+                multiline
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {session.postAssessmentNote.updatedAt
+                    ? `Terakhir disimpan ${formatDateTime(session.postAssessmentNote.updatedAt)}`
+                    : 'Belum ada catatan pasca-asesmen.'}
+                </p>
+                <Button
+                  type="button"
+                  className="rounded-xl"
+                  disabled={noteSaving || !noteDirty}
+                  onClick={() => onSavePostAssessmentNote(noteDraft)}
+                >
+                  {noteSaving ? 'Menyimpan...' : 'Simpan catatan'}
+                </Button>
+              </div>
+            </AppPanel>
+          ) : null}
+
           {session.failureMessage ? (
             <StatusNotice tone="error" title="Masalah sesi">
               {session.failureMessage}
@@ -718,7 +890,7 @@ function SortableHead({
       <button
         type="button"
         className={cn(
-          'inline-flex w-full items-center gap-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground transition hover:text-foreground',
+          'inline-flex w-full items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition hover:text-foreground',
           align === 'right' && 'justify-end'
         )}
         aria-sort={isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -732,14 +904,14 @@ function SortableHead({
 }
 
 function compareRows(
-  first: HistoryRow,
-  second: HistoryRow,
+  first: PatientRow,
+  second: PatientRow,
   sort: { key: SortKey; direction: SortDirection }
 ): number {
   const direction = sort.direction === 'asc' ? 1 : -1
   const comparison = (() => {
     if (sort.key === 'date') return first.sortTime - second.sortTime
-    if (sort.key === 'result') return statusSortOrder[first.status] - statusSortOrder[second.status]
+    if (sort.key === 'count') return first.assessmentCount - second.assessmentCount
     if (sort.key === 'id') return first.participantId.localeCompare(second.participantId)
     return first.name.localeCompare(second.name)
   })()

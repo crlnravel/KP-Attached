@@ -168,6 +168,11 @@ export type ConsentRecord = {
   revokedAt: string | null
 }
 
+export type PostAssessmentNote = {
+  text: string
+  updatedAt: string | null
+}
+
 export type SessionDraft = {
   participantId: string
   participantName: string
@@ -180,6 +185,7 @@ export type SessionDraft = {
   createdAt: string
   updatedAt: string
   recordingsDeletedAt: string | null
+  postAssessmentNote: PostAssessmentNote
 }
 
 export type ResultFeedback = {
@@ -219,6 +225,7 @@ export type SessionRecord = {
   completedAt: string | null
   failureMessage: string | null
   draft: SessionDraft
+  postAssessmentNote: PostAssessmentNote
   result: InferenceResult | null
 }
 
@@ -321,6 +328,11 @@ export type SaveArtifactInput = {
 export type SaveQuestionnaireInput = {
   sessionId: string
   answers: number[]
+}
+
+export type SavePostAssessmentNoteInput = {
+  sessionId: string
+  text: string
 }
 
 export type SubmitConsentInput = {

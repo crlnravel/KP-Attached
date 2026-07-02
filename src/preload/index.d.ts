@@ -6,6 +6,7 @@ import type {
   DashboardSnapshot,
   InferenceStatus,
   ReviewAccessRequestInput,
+  SavePostAssessmentNoteInput,
   SubmitResultFeedbackInput,
   UpdateAccountEmailInput,
   UpdatePsychologistProfileInput,
@@ -51,6 +52,7 @@ type AttachedApi = {
     updateStep: (sessionId: string, step: SessionStep) => Promise<SessionRecord>
     saveArtifact: (input: SaveArtifactInput) => Promise<SessionRecord>
     saveQuestionnaire: (input: SaveQuestionnaireInput) => Promise<SessionRecord>
+    savePostAssessmentNote: (input: SavePostAssessmentNoteInput) => Promise<SessionRecord>
   }
   inference: {
     start: (sessionId: string) => Promise<InferenceStatus>

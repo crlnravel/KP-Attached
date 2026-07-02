@@ -5,6 +5,7 @@ import type {
   InferenceResult,
   InferenceStatus,
   ResultFeedback,
+  SessionIdentityInput,
   SessionRecord,
   SessionStep,
   StimulusCaptureStatus
@@ -42,6 +43,8 @@ export type AssessmentController = {
     recordingMode: RecordingMode
     inferenceStatus: InferenceStatus | null
     result: InferenceResult | null
+    postAssessmentNote: string
+    postAssessmentNoteUpdatedAt: string | null
     selectedVideoMimeType: string | null
     selectedAudioMimeType: string | null
     identityReady: boolean
@@ -57,6 +60,7 @@ export type AssessmentController = {
       value: string
     ) => void
     saveIdentity: () => Promise<void>
+    selectExistingPatient: (input: SessionIdentityInput) => Promise<void>
     submitConsent: () => Promise<void>
     revokeConsent: () => Promise<void>
     goToIdentity: () => Promise<void>
@@ -72,6 +76,7 @@ export type AssessmentController = {
     setAnswer: (index: number, value: number) => void
     startInference: () => Promise<void>
     returnToReview: () => Promise<void>
+    savePostAssessmentNote: (text: string) => Promise<void>
     submitResultFeedback: (
       verdict: ResultFeedback['verdict'],
       correctedLabel?: 'secure' | 'insecure' | null
@@ -288,6 +293,10 @@ export function useAssessmentController({
   const [recordingMode, setRecordingMode] = useState<RecordingMode>(null)
   const [inferenceStatus, setInferenceStatus] = useState<InferenceStatus | null>(null)
   const [result, setResult] = useState<InferenceResult | null>(null)
+  const [postAssessmentNote, setPostAssessmentNote] = useState('')
+  const [postAssessmentNoteUpdatedAt, setPostAssessmentNoteUpdatedAt] = useState<string | null>(
+    null
+  )
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
   const previewStreamRef = useRef<MediaStream | null>(null)
@@ -329,6 +338,8 @@ export function useAssessmentController({
     setNotes(nextSession.draft.notes)
     setAnswers(nextSession.draft.questionnaireAnswers)
     setCaptures(nextSession.draft.captures)
+    setPostAssessmentNote(nextSession.postAssessmentNote.text)
+    setPostAssessmentNoteUpdatedAt(nextSession.postAssessmentNote.updatedAt)
     setCurrentSlotIndex((current) => {
       const fallbackIndex = firstIncompleteSlot(nextSession.draft.captures)
       if (initializedSlotSessionIdRef.current !== nextSession.id) {
@@ -578,6 +589,27 @@ export function useAssessmentController({
       setSaving(false)
     }
   }, [age, applySession, notes, onSessionChanged, participantId, participantName, sessionId])
+
+  const selectExistingPatient = useCallback(
+    async (input: SessionIdentityInput): Promise<void> => {
+      if (!sessionId) {
+        return
+      }
+
+      setSaving(true)
+      setError(null)
+      try {
+        const nextSession = await attachedApi.sessions.updateIdentity(sessionId, input)
+        applySession(nextSession)
+        onSessionChanged()
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Pasien gagal dipilih.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [applySession, onSessionChanged, sessionId]
+  )
 
   const submitConsent = useCallback(async (): Promise<void> => {
     if (!sessionId) {
@@ -1041,6 +1073,32 @@ export function useAssessmentController({
     [applySession, onSessionChanged, sessionId]
   )
 
+  const savePostAssessmentNote = useCallback(
+    async (text: string): Promise<void> => {
+      if (!sessionId) {
+        return
+      }
+
+      setSaving(true)
+      setError(null)
+      try {
+        const nextSession = await attachedApi.sessions.savePostAssessmentNote({
+          sessionId,
+          text
+        })
+        applySession(nextSession)
+        onSessionChanged()
+      } catch (noteError) {
+        setError(
+          noteError instanceof Error ? noteError.message : 'Catatan pasca-asesmen gagal disimpan.'
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [applySession, onSessionChanged, sessionId]
+  )
+
   const abortSession = useCallback(async (): Promise<void> => {
     if (!sessionId) {
       return
@@ -1100,6 +1158,8 @@ export function useAssessmentController({
       recordingMode,
       inferenceStatus,
       result,
+      postAssessmentNote,
+      postAssessmentNoteUpdatedAt,
       selectedVideoMimeType,
       selectedAudioMimeType,
       identityReady,
@@ -1112,6 +1172,7 @@ export function useAssessmentController({
       reload,
       updateParticipantField,
       saveIdentity,
+      selectExistingPatient,
       submitConsent,
       revokeConsent,
       goToIdentity,
@@ -1127,6 +1188,7 @@ export function useAssessmentController({
       setAnswer,
       startInference,
       returnToReview,
+      savePostAssessmentNote,
       submitResultFeedback,
       abortSession
     }

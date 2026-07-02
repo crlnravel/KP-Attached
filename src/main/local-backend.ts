@@ -24,8 +24,10 @@ import type {
   PsychologistProfile,
   PsychologistRegistrationInput,
   PsychologistLicenseType,
+  PostAssessmentNote,
   ReviewAccessRequestInput,
   SaveArtifactInput,
+  SavePostAssessmentNoteInput,
   SaveQuestionnaireInput,
   SessionDraft,
   SessionIdentityInput,
@@ -103,6 +105,7 @@ type TrainingReportRow = {
   probability_secure: string
   probability_insecure: string
   questionnaire_score: string
+  post_assessment_note: string
   completed_at: string
   feedback_submitted_at: string
 }
@@ -150,6 +153,19 @@ function sanitizeSubjectName(sessionId: string): string {
   return sessionId.toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
+function sanitizeFolderName(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'unknown-participant'
+  )
+}
+
 function createEmptyCaptures(): StimulusCaptureStatus[] {
   return Array.from({ length: STIMULUS_COUNT }, (_, index) => ({
     slot: index + 1,
@@ -169,6 +185,13 @@ function createEmptyConsent(): ConsentRecord {
   }
 }
 
+function createEmptyPostAssessmentNote(): PostAssessmentNote {
+  return {
+    text: '',
+    updatedAt: null
+  }
+}
+
 function createEmptyDraft(): SessionDraft {
   const timestamp = nowIso()
   return {
@@ -182,7 +205,8 @@ function createEmptyDraft(): SessionDraft {
     step: 'identity',
     createdAt: timestamp,
     updatedAt: timestamp,
-    recordingsDeletedAt: null
+    recordingsDeletedAt: null,
+    postAssessmentNote: createEmptyPostAssessmentNote()
   }
 }
 
@@ -382,13 +406,23 @@ function normalizeConsent(value: Partial<ConsentRecord> | null | undefined): Con
   }
 }
 
+function normalizePostAssessmentNote(
+  value: Partial<PostAssessmentNote> | null | undefined
+): PostAssessmentNote {
+  return {
+    text: typeof value?.text === 'string' ? value.text : '',
+    updatedAt: typeof value?.updatedAt === 'string' ? value.updatedAt : null
+  }
+}
+
 function parseDraft(value: string): SessionDraft {
   const parsed = JSON.parse(value) as SessionDraft
   return {
     ...parsed,
     consent: normalizeConsent(parsed.consent),
     recordingsDeletedAt:
-      typeof parsed.recordingsDeletedAt === 'string' ? parsed.recordingsDeletedAt : null
+      typeof parsed.recordingsDeletedAt === 'string' ? parsed.recordingsDeletedAt : null,
+    postAssessmentNote: normalizePostAssessmentNote(parsed.postAssessmentNote)
   }
 }
 
@@ -881,6 +915,7 @@ export class LocalBackend {
   private readonly databasePath: string
   private readonly sessionsRoot: string
   private readonly recordingArtifactsRoot: string
+  private readonly participantTestArtifactsRoot: string
   private readonly trainingReportsRoot: string
   private readonly db: DatabaseSync
   private readonly projectRoot: string
@@ -896,11 +931,18 @@ export class LocalBackend {
     this.databasePath = join(this.dataRoot, 'attached-local.db')
     this.sessionsRoot = join(this.dataRoot, 'sessions')
     this.recordingArtifactsRoot = join(this.projectRoot, 'web', 'artifacts', 'recordings')
+    this.participantTestArtifactsRoot = join(
+      this.projectRoot,
+      'web',
+      'artifacts',
+      'participant-tests'
+    )
     this.trainingReportsRoot = join(this.projectRoot, 'web', 'artifacts', 'training-reports')
 
     mkdirSync(this.dataRoot, { recursive: true })
     mkdirSync(this.sessionsRoot, { recursive: true })
     mkdirSync(this.recordingArtifactsRoot, { recursive: true })
+    mkdirSync(this.participantTestArtifactsRoot, { recursive: true })
     mkdirSync(this.trainingReportsRoot, { recursive: true })
 
     this.db = new DatabaseSync(this.databasePath)
@@ -1003,6 +1045,10 @@ export class LocalBackend {
     )
     this.registerHandler(CHANNELS.saveQuestionnaire, (_event, input: SaveQuestionnaireInput) =>
       this.saveQuestionnaire(input)
+    )
+    this.registerHandler(
+      CHANNELS.savePostAssessmentNote,
+      (_event, input: SavePostAssessmentNoteInput) => this.savePostAssessmentNote(input)
     )
     this.registerHandler(CHANNELS.startInference, (_event, sessionId: string) =>
       this.startInference(sessionId)
@@ -1166,9 +1212,11 @@ export class LocalBackend {
 
     await fs.rm(this.sessionsRoot, { recursive: true, force: true })
     await fs.rm(this.recordingArtifactsRoot, { recursive: true, force: true })
+    await fs.rm(this.participantTestArtifactsRoot, { recursive: true, force: true })
     await fs.rm(this.trainingReportsRoot, { recursive: true, force: true })
     await fs.mkdir(this.sessionsRoot, { recursive: true })
     await fs.mkdir(this.recordingArtifactsRoot, { recursive: true })
+    await fs.mkdir(this.participantTestArtifactsRoot, { recursive: true })
     await fs.mkdir(this.trainingReportsRoot, { recursive: true })
 
     return this.buildAuthSnapshot(null)
@@ -1468,6 +1516,7 @@ export class LocalBackend {
     session.draft.step = 'review'
 
     this.persistSession(sessionId, 'ready_for_inference', session.draft, null, null, null)
+    await this.rebuildParticipantTestArtifacts({ ...session, state: 'ready_for_inference' })
     this.writeAuditEvent('session.seed_debug', sessionId, {
       captureCount: STIMULUS_COUNT,
       source: sampleSource,
@@ -1491,6 +1540,7 @@ export class LocalBackend {
     draft.updatedAt = nowIso()
 
     this.persistSession(sessionId, session.state, draft, session.result, null, session.completedAt)
+    await this.rebuildParticipantTestArtifacts({ ...session, draft })
     this.writeAuditEvent('session.update_identity', sessionId, {
       participantId: draft.participantId
     })
@@ -1623,6 +1673,11 @@ export class LocalBackend {
     await fs.mkdir(dirname(filePath), { recursive: true })
     await fs.writeFile(filePath, payload)
     const artifactMirrorPath = await this.mirrorRecordingArtifact(input, payload)
+    const participantTestArtifactPath = await this.mirrorParticipantTestArtifact(
+      session,
+      input,
+      payload
+    )
 
     const artifact: CaptureArtifact = {
       path: filePath,
@@ -1652,7 +1707,8 @@ export class LocalBackend {
       slot: input.slot,
       kind: input.kind,
       sha256: artifact.sha256,
-      artifactMirrorPath
+      artifactMirrorPath,
+      participantTestArtifactPath
     })
     return this.requireOwnedSession(input.sessionId)
   }
@@ -1688,6 +1744,39 @@ export class LocalBackend {
     )
     this.writeAuditEvent('questionnaire.save', input.sessionId, { answers: input.answers.length })
     return this.requireOwnedSession(input.sessionId)
+  }
+
+  async savePostAssessmentNote(input: SavePostAssessmentNoteInput): Promise<SessionRecord> {
+    const session = this.requireOwnedSession(input.sessionId)
+    if (!session.result) {
+      throw new Error('Catatan pasca-asesmen hanya dapat disimpan setelah hasil tersedia.')
+    }
+
+    const text = input.text.trim()
+    const updatedAt = nowIso()
+    session.draft.postAssessmentNote = {
+      text,
+      updatedAt: text.length > 0 ? updatedAt : null
+    }
+
+    this.persistSession(
+      session.id,
+      session.state,
+      session.draft,
+      session.result,
+      session.failureMessage,
+      session.completedAt
+    )
+
+    const updatedSession = this.requireOwnedSession(session.id)
+    if (updatedSession.result?.feedback) {
+      await this.writeTrainingFeedbackReport(updatedSession)
+    }
+
+    this.writeAuditEvent('post_assessment_note.save', session.id, {
+      hasNote: text.length > 0
+    })
+    return updatedSession
   }
 
   async startInference(sessionId: string): Promise<InferenceStatus> {
@@ -2565,6 +2654,7 @@ export class LocalBackend {
   }
 
   private mapSession(row: SessionRow): SessionRecord {
+    const draft = parseDraft(row.draft_json)
     return {
       id: row.id,
       state: row.state as SessionState,
@@ -2572,7 +2662,8 @@ export class LocalBackend {
       updatedAt: row.updated_at,
       completedAt: row.completed_at,
       failureMessage: row.failure_message,
-      draft: parseDraft(row.draft_json),
+      draft,
+      postAssessmentNote: draft.postAssessmentNote,
       result: parseResult(row.result_json)
     }
   }
@@ -2657,12 +2748,13 @@ export class LocalBackend {
   }
 
   private async deleteSessionRecord(sessionId: string): Promise<void> {
+    const session = this.requireSession(sessionId)
     this.jobs.delete(sessionId)
     this.abortRequested.delete(sessionId)
     this.runningProcesses.delete(sessionId)
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
     this.compactDatabase()
-    await this.deleteSessionArtifacts(sessionId)
+    await this.deleteSessionArtifacts(session)
   }
 
   private compactDatabase(): void {
@@ -2673,13 +2765,14 @@ export class LocalBackend {
     }
   }
 
-  private async deleteSessionArtifacts(sessionId: string): Promise<void> {
-    const sessionLabel = sanitizeSubjectName(sessionId)
+  private async deleteSessionArtifacts(session: SessionRecord): Promise<void> {
+    const sessionLabel = sanitizeSubjectName(session.id)
     await Promise.all([
-      fs.rm(this.getSessionDirectory(sessionId), { recursive: true, force: true }),
+      fs.rm(this.getSessionDirectory(session.id), { recursive: true, force: true }),
       fs.rm(join(this.recordingArtifactsRoot, sessionLabel), { recursive: true, force: true }),
-      fs.rm(join(this.trainingReportsRoot, `${sessionId}.json`), { force: true }),
-      fs.rm(join(this.trainingReportsRoot, `${sessionId}.csv`), { force: true })
+      this.removeParticipantSessionMirrors(session.id),
+      fs.rm(join(this.trainingReportsRoot, `${session.id}.json`), { force: true }),
+      fs.rm(join(this.trainingReportsRoot, `${session.id}.csv`), { force: true })
     ])
   }
 
@@ -2704,7 +2797,8 @@ export class LocalBackend {
       fs.rm(join(this.recordingArtifactsRoot, sanitizeSubjectName(session.id)), {
         recursive: true,
         force: true
-      })
+      }),
+      this.removeParticipantSessionMirrors(session.id)
     ])
   }
 
@@ -2761,6 +2855,27 @@ export class LocalBackend {
     }
   }
 
+  private async mirrorParticipantTestArtifact(
+    session: SessionRecord,
+    input: SaveArtifactInput,
+    payload: Buffer
+  ): Promise<string | null> {
+    const mirrorPath = this.resolveParticipantTestArtifactPath(
+      session,
+      input.slot,
+      input.kind,
+      input.mimeType
+    )
+
+    try {
+      await fs.mkdir(dirname(mirrorPath), { recursive: true })
+      await fs.writeFile(mirrorPath, payload)
+      return mirrorPath
+    } catch {
+      return null
+    }
+  }
+
   private resolveRecordingArtifactPath(
     sessionId: string,
     slot: number,
@@ -2789,6 +2904,96 @@ export class LocalBackend {
           : `response-audio${extension}`
 
     return join(this.recordingArtifactsRoot, sessionLabel, `stimulus-${slotLabel}`, fileName)
+  }
+
+  private resolveParticipantTestArtifactPath(
+    session: SessionRecord,
+    slot: number,
+    kind: CaptureKind,
+    mimeType: string
+  ): string {
+    const participantKey = this.resolveParticipantTestKey(session)
+    const slotLabel = String(slot).padStart(2, '0')
+    const extension =
+      kind === 'audio'
+        ? mimeType.includes('mp4') || mimeType.includes('m4a')
+          ? '.m4a'
+          : mimeType.includes('wav')
+            ? '.wav'
+            : mimeType.includes('aac')
+              ? '.aac'
+              : '.webm'
+        : mimeType.includes('webm')
+          ? '.webm'
+          : '.mp4'
+    const fileName =
+      kind === 'exposure'
+        ? `exposure${extension}`
+        : kind === 'response'
+          ? `response-video${extension}`
+          : `response-audio${extension}`
+
+    return join(
+      this.participantTestArtifactsRoot,
+      participantKey,
+      session.id,
+      `stimulus-${slotLabel}`,
+      fileName
+    )
+  }
+
+  private resolveParticipantTestKey(session: SessionRecord): string {
+    const participantIdentifier =
+      session.draft.participantId || session.draft.participantName || session.id
+    return sanitizeFolderName(participantIdentifier)
+  }
+
+  private async removeParticipantSessionMirrors(sessionId: string): Promise<void> {
+    let participantDirectories: string[] = []
+    try {
+      participantDirectories = await fs.readdir(this.participantTestArtifactsRoot)
+    } catch {
+      return
+    }
+
+    await Promise.all(
+      participantDirectories.map((participantDirectory) =>
+        fs.rm(join(this.participantTestArtifactsRoot, participantDirectory, sessionId), {
+          recursive: true,
+          force: true
+        })
+      )
+    )
+  }
+
+  private async rebuildParticipantTestArtifacts(session: SessionRecord): Promise<void> {
+    await this.removeParticipantSessionMirrors(session.id)
+
+    const copyTasks = session.draft.captures.flatMap((capture) => {
+      const tasks: Array<Promise<void>> = []
+      for (const kind of ['exposure', 'response', 'audio'] as const) {
+        const artifact = capture[kind]
+        if (!artifact || !existsSync(artifact.path)) {
+          continue
+        }
+
+        const destination = this.resolveParticipantTestArtifactPath(
+          session,
+          capture.slot,
+          kind,
+          artifact.mimeType
+        )
+        tasks.push(
+          fs
+            .mkdir(dirname(destination), { recursive: true })
+            .then(() => fs.copyFile(artifact.path, destination))
+            .catch(() => undefined)
+        )
+      }
+      return tasks
+    })
+
+    await Promise.all(copyTasks)
   }
 
   private async writeDebugArtifacts(sessionId: string): Promise<StimulusCaptureStatus[]> {
@@ -2938,6 +3143,7 @@ export class LocalBackend {
       probability_secure: String(result.probabilities.secure),
       probability_insecure: String(result.probabilities.insecure),
       questionnaire_score: session.draft.questionnaireAnswers.map((value) => value ?? '').join(':'),
+      post_assessment_note: session.postAssessmentNote.text,
       completed_at: result.completedAt,
       feedback_submitted_at: feedback.submittedAt
     }
@@ -2977,6 +3183,7 @@ export class LocalBackend {
         trainingLabelId: trainingLabel === 'insecure' ? 1 : 0,
         submittedAt: feedback.submittedAt
       },
+      postAssessmentNote: session.postAssessmentNote,
       questionnaire: {
         answers: session.draft.questionnaireAnswers,
         questScore: row.questionnaire_score,

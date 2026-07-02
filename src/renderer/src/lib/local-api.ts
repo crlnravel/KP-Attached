@@ -6,6 +6,7 @@ import type {
   InferenceStatus,
   ReviewAccessRequestInput,
   SaveArtifactInput,
+  SavePostAssessmentNoteInput,
   SaveQuestionnaireInput,
   SessionIdentityInput,
   SessionRecord,
@@ -63,7 +64,9 @@ export const attachedApi = {
     saveArtifact: (input: SaveArtifactInput): Promise<SessionRecord> =>
       window.attached.sessions.saveArtifact(input),
     saveQuestionnaire: (input: SaveQuestionnaireInput): Promise<SessionRecord> =>
-      window.attached.sessions.saveQuestionnaire(input)
+      window.attached.sessions.saveQuestionnaire(input),
+    savePostAssessmentNote: (input: SavePostAssessmentNoteInput): Promise<SessionRecord> =>
+      window.attached.sessions.savePostAssessmentNote(input)
   },
   inference: {
     start: (sessionId: string): Promise<InferenceStatus> =>

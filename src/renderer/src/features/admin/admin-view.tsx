@@ -66,20 +66,9 @@ export function AdminView({
   const pendingUsers = users.filter((user) => user.verification.status === 'pending_admin_review')
   const historyUsers = users.filter((user) => user.verification.status !== 'pending_admin_review')
   const [section, setSection] = useState<AdminSection>('active')
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [previewDocument, setPreviewDocument] = useState<VerificationDocument | null>(null)
-
-  useEffect(() => {
-    if (!selectedUser) return
-
-    const refreshedUser = users.find((user) => user.id === selectedUser.id)
-    if (!refreshedUser) {
-      setSelectedUser(null)
-      return
-    }
-
-    setSelectedUser(refreshedUser)
-  }, [selectedUser, users])
+  const selectedUser = users.find((user) => user.id === selectedUserId) ?? null
 
   const visibleUsers = section === 'active' ? pendingUsers : historyUsers
 
@@ -184,7 +173,7 @@ export function AdminView({
                       size="sm"
                       variant="outline"
                       className="rounded-xl bg-card"
-                      onClick={() => setSelectedUser(user)}
+                      onClick={() => setSelectedUserId(user.id)}
                     >
                       <EyeIcon className="size-4" />
                       {section === 'active' ? 'Tinjau' : 'Detail'}
@@ -210,7 +199,7 @@ export function AdminView({
         user={selectedUser}
         isLoading={isLoading}
         onOpenChange={(open) => {
-          if (!open) setSelectedUser(null)
+          if (!open) setSelectedUserId(null)
         }}
         onPreviewDocument={setPreviewDocument}
         onDecision={handleDecision}

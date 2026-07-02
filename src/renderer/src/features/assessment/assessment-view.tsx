@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeftIcon, Loader2Icon, MicIcon, XIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  HeartIcon,
+  Loader2Icon,
+  MicIcon,
+  SearchIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+  XIcon
+} from 'lucide-react'
 
 import {
   AppPanel,
@@ -35,8 +46,20 @@ import type { AssessmentController } from '@/features/assessment/use-assessment-
 
 type AssessmentViewProps = {
   controller: AssessmentController
+  patientMode?: 'new' | 'existing' | null
+  existingPatientOptions?: ExistingPatientOption[]
   modelRuntimeReady?: boolean
   onExitAssessment: () => void
+}
+
+export type ExistingPatientOption = {
+  key: string
+  name: string
+  participantId: string
+  age: string
+  notes: string
+  lastUpdated: string
+  assessmentCount: number
 }
 
 const CONSENT_DISPLAY_STATEMENT =
@@ -44,6 +67,8 @@ const CONSENT_DISPLAY_STATEMENT =
 
 export function AssessmentView({
   controller,
+  patientMode = null,
+  existingPatientOptions = [],
   modelRuntimeReady,
   onExitAssessment
 }: AssessmentViewProps): React.JSX.Element {
@@ -102,6 +127,16 @@ export function AssessmentView({
           onBackToIdentity={() => void actions.goToIdentity()}
           onFieldChange={actions.updateParticipantField}
           onSaveIdentity={() => void actions.saveIdentity()}
+          patientMode={patientMode}
+          existingPatientOptions={existingPatientOptions}
+          onSelectExistingPatient={(patient) =>
+            void actions.selectExistingPatient({
+              participantId: patient.participantId,
+              participantName: patient.name,
+              age: patient.age,
+              notes: patient.notes
+            })
+          }
           onContinue={() => void actions.continueToRecording()}
         />
       )}
@@ -125,6 +160,16 @@ export function AssessmentView({
           onBackToIdentity={() => void actions.goToIdentity()}
           onFieldChange={actions.updateParticipantField}
           onSaveIdentity={() => void actions.saveIdentity()}
+          patientMode={patientMode}
+          existingPatientOptions={existingPatientOptions}
+          onSelectExistingPatient={(patient) =>
+            void actions.selectExistingPatient({
+              participantId: patient.participantId,
+              participantName: patient.name,
+              age: patient.age,
+              notes: patient.notes
+            })
+          }
           onContinue={() => void actions.continueToRecording()}
         />
       )}
@@ -165,10 +210,13 @@ export function AssessmentView({
       {state.step === 'result' && (
         <ResultStage
           result={state.result}
+          postAssessmentNote={state.postAssessmentNote}
+          postAssessmentNoteUpdatedAt={state.postAssessmentNoteUpdatedAt}
           saving={state.saving}
           onSubmitFeedback={(verdict, correctedLabel) =>
             void actions.submitResultFeedback(verdict, correctedLabel)
           }
+          onSavePostAssessmentNote={(text) => void actions.savePostAssessmentNote(text)}
           onWipeSession={() => void actions.revokeConsent()}
           onExitAssessment={onExitAssessment}
         />
@@ -230,7 +278,7 @@ function ConsentStage({
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col justify-center gap-8">
-      <PageHeading eyebrow="Consent" title="Konfirmasi persetujuan peserta." align="center" />
+      <PageHeading title="Konfirmasi persetujuan peserta." align="center" />
 
       <AppPanel contentClassName="flex flex-col gap-7 p-8 sm:p-10">
         <div className="space-y-4 rounded-[22px] border border-border/60 bg-background/70 p-5 text-sm leading-7 text-muted-foreground">
@@ -290,6 +338,9 @@ function EntryStage({
   onBackToIdentity,
   onFieldChange,
   onSaveIdentity,
+  patientMode,
+  existingPatientOptions,
+  onSelectExistingPatient,
   onContinue
 }: {
   state: AssessmentController['state']
@@ -301,6 +352,9 @@ function EntryStage({
   onBackToIdentity: () => void
   onFieldChange: AssessmentController['actions']['updateParticipantField']
   onSaveIdentity: () => void
+  patientMode: 'new' | 'existing' | null
+  existingPatientOptions: ExistingPatientOption[]
+  onSelectExistingPatient: (patient: ExistingPatientOption) => void
   onContinue: () => void
 }): React.JSX.Element {
   const isIdentityStep = state.step === 'identity'
@@ -333,45 +387,17 @@ function EntryStage({
 
       {isIdentityStep ? (
         <>
-          <PageHeading
-            eyebrow="Identitas"
-            title="Verifikasi data peserta."
-            description="Pastikan profil peserta benar sebelum asesmen dimulai."
-          />
-
-          <div className="rounded-[24px] border border-border/60 bg-card/92 p-8 shadow-sm sm:p-10">
-            <div className="grid gap-6 md:grid-cols-2">
-              <AssessmentField
-                label="ID peserta"
-                value={state.participantId}
-                onChange={(value) => onFieldChange('participantId', value)}
-                readOnly
-              />
-              <AssessmentField
-                label="Usia"
-                value={state.age}
-                onChange={(value) => onFieldChange('age', value)}
-                placeholder="Mis. 29"
-                inputMode="numeric"
-              />
-            </div>
-            <AssessmentField
-              label="Nama lengkap"
-              value={state.participantName}
-              onChange={(value) => onFieldChange('participantName', value)}
-              placeholder="Masukkan nama peserta"
+          {patientMode === 'existing' ? (
+            <ExistingPatientPicker
+              patients={existingPatientOptions}
+              busy={state.saving}
+              onSelectPatient={onSelectExistingPatient}
             />
-            <AppTextField
-              label="Catatan"
-              value={state.notes}
-              onChange={(value) => onFieldChange('notes', value)}
-              placeholder="Tambahkan catatan bila diperlukan"
-              multiline
-              className="mt-6 md:col-span-2"
-            />
-          </div>
+          ) : (
+            <NewPatientIdentityForm state={state} onFieldChange={onFieldChange} />
+          )}
 
-          {showDebugShortcut ? (
+          {showDebugShortcut && patientMode !== 'existing' ? (
             <DebugShortcutCard
               busy={state.saving}
               disabled={debugShortcutDisabled}
@@ -429,22 +455,172 @@ function EntryStage({
         </>
       )}
 
+      {isIdentityStep && patientMode === 'existing' ? null : (
+        <div className="flex items-center justify-between pt-5">
+          <div className="text-sm text-muted-foreground">{isIdentityStep ? '1 / 2' : '2 / 2'}</div>
+          <Button
+            type="button"
+            className="rounded-xl"
+            disabled={
+              isIdentityStep
+                ? !state.identityReady || state.saving
+                : !state.videoReady || !state.microphoneReady || state.saving
+            }
+            onClick={isIdentityStep ? onSaveIdentity : onContinue}
+          >
+            Lanjut
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NewPatientIdentityForm({
+  state,
+  onFieldChange
+}: {
+  state: AssessmentController['state']
+  onFieldChange: AssessmentController['actions']['updateParticipantField']
+}): React.JSX.Element {
+  return (
+    <>
+      <PageHeading
+        eyebrow="Identitas"
+        title="Verifikasi data peserta."
+        description="Pastikan profil peserta benar sebelum asesmen dimulai."
+      />
+
+      <div className="rounded-[24px] border border-border/60 bg-card/92 p-8 shadow-sm sm:p-10">
+        <div className="grid gap-6 md:grid-cols-2">
+          <AssessmentField
+            label="ID peserta"
+            value={state.participantId}
+            onChange={(value) => onFieldChange('participantId', value)}
+            readOnly
+          />
+          <AssessmentField
+            label="Usia"
+            value={state.age}
+            onChange={(value) => onFieldChange('age', value)}
+            placeholder="Mis. 29"
+            inputMode="numeric"
+          />
+        </div>
+        <AssessmentField
+          label="Nama lengkap"
+          value={state.participantName}
+          onChange={(value) => onFieldChange('participantName', value)}
+          placeholder="Masukkan nama peserta"
+        />
+        <AppTextField
+          label="Catatan"
+          value={state.notes}
+          onChange={(value) => onFieldChange('notes', value)}
+          placeholder="Tambahkan catatan bila diperlukan"
+          multiline
+          className="mt-6 md:col-span-2"
+        />
+      </div>
+    </>
+  )
+}
+
+function ExistingPatientPicker({
+  patients,
+  busy,
+  onSelectPatient
+}: {
+  patients: ExistingPatientOption[]
+  busy: boolean
+  onSelectPatient: (patient: ExistingPatientOption) => void
+}): React.JSX.Element {
+  const [query, setQuery] = useState('')
+  const [selectedPatientKey, setSelectedPatientKey] = useState<string | null>(null)
+  const visiblePatients = patients.filter((patient) => {
+    const normalizedQuery = query.trim().toLowerCase()
+    return (
+      normalizedQuery.length === 0 ||
+      patient.name.toLowerCase().includes(normalizedQuery) ||
+      patient.participantId.toLowerCase().includes(normalizedQuery)
+    )
+  })
+  const selectedPatient = patients.find((patient) => patient.key === selectedPatientKey) ?? null
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Pasien terdaftar"
+        title="Pilih pasien untuk asesmen ulang."
+      />
+
+      <div className="rounded-[24px] border border-border/60 bg-card/92 p-6 shadow-sm sm:p-8">
+        <AppTextField
+          label="Cari pasien"
+          hideLabel
+          value={query}
+          onChange={setQuery}
+          placeholder="Cari nama atau ID pasien"
+          icon={SearchIcon}
+          inputClassName="bg-background"
+        />
+
+        <div className="mt-5 overflow-x-auto rounded-[18px] border border-border/60 bg-background/60">
+          <div className="min-w-[980px]">
+          <div className="grid grid-cols-[minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] gap-4 border-b border-border/60 bg-card/60 px-14 py-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <span>NAMA</span>
+            <span>ID</span>
+            <span className="text-right whitespace-nowrap">JUMLAH ASESMEN</span>
+            <span className="whitespace-nowrap">TANGGAL ASESMEN TERAKHIR</span>
+          </div>
+
+          <div className="max-h-[24rem] overflow-y-auto">
+          {visiblePatients.length > 0 ? (
+            visiblePatients.map((patient) => (
+              <label
+                key={patient.key}
+                className="grid w-full cursor-pointer grid-cols-[28px_minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] items-center gap-4 border-b border-border/50 px-5 py-4 text-left transition last:border-b-0 hover:bg-muted/45"
+              >
+                <input
+                  type="radio"
+                  name="existing-patient"
+                  className="size-5 accent-primary"
+                  checked={selectedPatientKey === patient.key}
+                  disabled={busy}
+                  onChange={() => setSelectedPatientKey(patient.key)}
+                />
+                <span className="truncate text-sm font-medium text-foreground">{patient.name}</span>
+                <span className="truncate text-sm text-muted-foreground">{patient.participantId}</span>
+                <span className="text-right text-sm font-medium text-foreground">
+                  {patient.assessmentCount}
+                </span>
+                <span className="text-sm text-foreground">{formatDate(patient.lastUpdated)}</span>
+              </label>
+            ))
+          ) : (
+            <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+              Tidak ada pasien yang cocok.
+            </div>
+          )}
+          </div>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between pt-5">
-        <div className="text-sm text-muted-foreground">{isIdentityStep ? '1 / 2' : '2 / 2'}</div>
+        <div className="text-sm text-muted-foreground">1 / 2</div>
         <Button
           type="button"
           className="rounded-xl"
-          disabled={
-            isIdentityStep
-              ? !state.identityReady || state.saving
-              : !state.videoReady || !state.microphoneReady || state.saving
-          }
-          onClick={isIdentityStep ? onSaveIdentity : onContinue}
+          disabled={busy || !selectedPatient}
+          onClick={() => {
+            if (selectedPatient) onSelectPatient(selectedPatient)
+          }}
         >
-          Lanjut
+          {busy ? 'Menyimpan...' : 'Lanjut'}
         </Button>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1035,17 +1211,23 @@ function RunningStage({ state }: { state: AssessmentController['state'] }): Reac
 
 function ResultStage({
   result,
+  postAssessmentNote,
+  postAssessmentNoteUpdatedAt,
   saving,
   onSubmitFeedback,
+  onSavePostAssessmentNote,
   onWipeSession,
   onExitAssessment
 }: {
   result: AssessmentController['state']['result']
+  postAssessmentNote: string
+  postAssessmentNoteUpdatedAt: string | null
   saving: boolean
   onSubmitFeedback: (
     verdict: 'correct' | 'incorrect',
     correctedLabel?: 'secure' | 'insecure' | null
   ) => void
+  onSavePostAssessmentNote: (text: string) => void
   onWipeSession: () => void
   onExitAssessment: () => void
 }): React.JSX.Element {
@@ -1054,30 +1236,83 @@ function ResultStage({
     correctedLabel: 'secure' | 'insecure' | null
   } | null>(null)
   const [wipeDialogOpen, setWipeDialogOpen] = useState(false)
+  const [noteDraft, setNoteDraft] = useState(postAssessmentNote)
   const classification = result ? (result.label === 'secure' ? 'Secure' : 'Insecure') : null
   const oppositeLabel =
     result?.label === 'secure' ? 'insecure' : result?.label === 'insecure' ? 'secure' : null
-  const resultTone = result?.label === 'secure' ? 'success' : 'warning'
-  const accentClassName =
-    resultTone === 'success'
-      ? 'from-success/12 via-success/6 to-transparent'
-      : 'from-warning/12 via-warning/6 to-transparent'
+  const oppositeClassification =
+    oppositeLabel === 'secure' ? 'Secure' : oppositeLabel === 'insecure' ? 'Insecure' : null
+  const isSecure = result?.label === 'secure'
+  const noteDirty = noteDraft !== postAssessmentNote
+
+  useEffect(() => {
+    setNoteDraft(postAssessmentNote)
+  }, [postAssessmentNote])
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-3xl flex-col justify-center gap-8">
-      <PageHeading eyebrow="Sesi selesai" title="Hasil asesmen" align="center" />
+    <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl flex-col gap-8">
+      <PageHeading
+        eyebrow="Sesi selesai"
+        title="Hasil asesmen"
+        description="Terima kasih telah menyelesaikan sesi asesmen. Berikut adalah ringkasan hasil Anda."
+      />
 
       {result ? (
         <>
-          <div className="relative overflow-hidden rounded-[32px] border border-border/60 bg-card/94 p-10 shadow-[var(--shadow-card)] sm:p-12">
-            <div className={`absolute inset-0 bg-linear-to-br ${accentClassName}`} />
-            <div className="absolute inset-x-10 top-0 h-px bg-linear-to-r from-transparent via-foreground/12 to-transparent" />
-            <div className="relative flex flex-col items-center text-center">
-              <h2 className="text-5xl font-semibold tracking-[-0.06em] text-foreground sm:text-6xl">
-                {classification}
-              </h2>
+          <section className="overflow-hidden rounded-[28px] border border-border/70 bg-card/95 shadow-[var(--shadow-card)]">
+            <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center">
+              <div className="flex items-center gap-5">
+                <div
+                  className={`relative flex size-24 shrink-0 items-center justify-center rounded-full border ${
+                    isSecure
+                      ? 'border-success/20 bg-success-container/60 text-success'
+                      : 'border-warning/20 bg-warning-container/60 text-warning'
+                  }`}
+                >
+                  <div
+                    className={`absolute inset-3 rounded-full ${
+                      isSecure ? 'bg-success/8' : 'bg-warning/10'
+                    }`}
+                  />
+                  {isSecure ? (
+                    <ShieldCheckIcon className="relative z-10 size-11" />
+                  ) : (
+                    <ShieldAlertIcon className="relative z-10 size-11" />
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Hasil keseluruhan</p>
+                  <h2 className="font-headline text-4xl font-semibold tracking-[-0.055em] text-foreground sm:text-5xl">
+                    {classification}
+                  </h2>
+                  <p className="text-lg text-muted-foreground">
+                    Tingkat keyakinan:{' '}
+                    <span
+                      className={`font-semibold ${
+                        isSecure ? 'text-success' : 'text-warning'
+                      }`}
+                    >
+                      {formatPercent(result.confidence)}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-border/60 lg:border-l lg:pl-8">
+                <p className="max-w-md text-xl font-semibold leading-9 text-foreground">
+                  {isSecure
+                    ? 'Pola yang lebih aman tetap perlu dirawat lewat konsistensi dan refleksi.'
+                    : 'Terus lakukan langkah kecil setiap hari. Anda tidak sendiri, dan perubahan itu mungkin.'}
+                </p>
+                <div className="mt-5 flex items-center gap-3 text-primary">
+                  <span className="h-0.5 w-11 rounded-full bg-primary" />
+                  <HeartIcon className="size-4 fill-current" />
+                  <span className="h-0.5 w-11 rounded-full bg-warning/40" />
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
 
           {result.lowConfidence ? (
             <StatusNotice tone="warning" title="Keyakinan rendah">
@@ -1086,157 +1321,193 @@ function ResultStage({
             </StatusNotice>
           ) : null}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <AppPanel title="Detail hasil" contentClassName="flex flex-col gap-2.5 pt-2 pb-5">
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Tingkat keyakinan model terhadap label yang ditampilkan untuk sesi ini.">
-                    Keyakinan
-                  </InfoLabel>
-                }
-                value={formatPercent(result.confidence)}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ResultCard title="Detail hasil">
+              <ResultInfoTable
+                rows={[
+                  {
+                    label: (
+                      <InfoLabel tooltip="Tingkat keyakinan model terhadap label yang ditampilkan untuk sesi ini.">
+                        Keyakinan
+                      </InfoLabel>
+                    ),
+                    value: formatPercent(result.confidence)
+                  },
+                  {
+                    label: (
+                      <InfoLabel tooltip="Versi pipeline model lokal yang digunakan untuk menghasilkan hasil ini.">
+                        Versi model
+                      </InfoLabel>
+                    ),
+                    value: formatModelVersion(result.modelVersion)
+                  },
+                  {
+                    label: (
+                      <InfoLabel tooltip="Jumlah percobaan inferensi lokal yang dibutuhkan sampai hasil berhasil didapatkan.">
+                        Jumlah percobaan
+                      </InfoLabel>
+                    ),
+                    value: `${result.attemptCount}x`
+                  },
+                  {
+                    label: (
+                      <InfoLabel tooltip="Lama proses analisis lokal sejak pipeline dijalankan sampai hasil selesai dibuat.">
+                        Durasi inferensi
+                      </InfoLabel>
+                    ),
+                    value: formatDuration(result.inferenceDurationMs)
+                  },
+                  { label: 'Waktu selesai', value: formatDateTime(result.completedAt) }
+                ]}
               />
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Versi pipeline model lokal yang digunakan untuk menghasilkan hasil ini.">
-                    Versi model
-                  </InfoLabel>
-                }
-                value={formatModelVersion(result.modelVersion)}
-              />
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Jumlah percobaan inferensi lokal yang dibutuhkan sampai hasil berhasil didapatkan.">
-                    Jumlah percobaan
-                  </InfoLabel>
-                }
-                value={`${result.attemptCount}x`}
-              />
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Lama proses analisis lokal sejak pipeline dijalankan sampai hasil selesai dibuat.">
-                    Durasi inferensi
-                  </InfoLabel>
-                }
-                value={formatDuration(result.inferenceDurationMs)}
-              />
-              <InfoRow label="Waktu selesai" value={formatDateTime(result.completedAt)} />
-            </AppPanel>
-            <AppPanel title="Probabilitas kelas" contentClassName="flex flex-col gap-2.5 pt-2 pb-5">
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Probabilitas model untuk kelas Secure sebelum memilih label akhir.">
-                    Secure
-                  </InfoLabel>
-                }
-                value={formatPercent(result.probabilities.secure)}
-              />
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Probabilitas model untuk kelas Insecure sebelum memilih label akhir.">
-                    Insecure
-                  </InfoLabel>
-                }
-                value={formatPercent(result.probabilities.insecure)}
-              />
-              <InfoRow
-                label={
-                  <InfoLabel tooltip="Batas minimum keyakinan yang dipakai untuk menandai hasil sebagai low confidence.">
-                    Ambang keyakinan
-                  </InfoLabel>
-                }
-                value={formatPercent(result.lowConfidenceThreshold)}
-              />
-            </AppPanel>
+            </ResultCard>
+
+            <ResultCard title="Probabilitas kelas">
+              <div className="grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-center">
+                <ProbabilityDonut
+                  secure={result.probabilities.secure}
+                  insecure={result.probabilities.insecure}
+                />
+                <div className="space-y-4">
+                  <ProbabilityLegendRow
+                    label="Secure"
+                    value={formatPercent(result.probabilities.secure)}
+                    colorClassName="bg-info/35"
+                  />
+                  <ProbabilityLegendRow
+                    label="Insecure"
+                    value={formatPercent(result.probabilities.insecure)}
+                    colorClassName="bg-info"
+                  />
+                  <ProbabilityLegendRow
+                    label="Ambang keyakinan"
+                    value={formatPercent(result.lowConfidenceThreshold)}
+                    colorClassName="bg-warning/60"
+                  />
+                </div>
+              </div>
+            </ResultCard>
+
             {result.ecrRsScores.length > 0 ? (
-              <AppPanel
-                title="Skor ECR-RS"
-                className="md:col-span-2"
-                contentClassName="flex flex-col divide-y divide-border/50 pt-2 pb-5"
-              >
-                {result.ecrRsScores.map((score) => (
-                  <div
-                    key={score.relation}
-                    className="grid gap-2.5 py-3 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_140px_140px] sm:items-center"
-                  >
-                    <div className="text-sm font-medium text-foreground">{score.relation}</div>
-                    <InfoRow
-                      label={
-                        <InfoLabel tooltip="Rata-rata skor dimensi anxious untuk relasi ini berdasarkan jawaban ECR-RS.">
-                          Anxious
-                        </InfoLabel>
-                      }
-                      value={score.anxious.toFixed(2)}
-                    />
-                    <InfoRow
-                      label={
-                        <InfoLabel tooltip="Rata-rata skor dimensi avoidance untuk relasi ini berdasarkan jawaban ECR-RS.">
-                          Avoidance
-                        </InfoLabel>
-                      }
-                      value={score.avoidance.toFixed(2)}
-                    />
+              <ResultCard title="Skor ECR-RS" className="lg:col-span-2">
+                <div className="overflow-hidden rounded-[20px] border border-border/60">
+                  <div className="grid grid-cols-[minmax(0,1.4fr)_120px_120px] gap-4 border-b border-border/60 bg-background/50 px-5 py-4 text-sm text-muted-foreground">
+                    <div>Aspek</div>
+                    <div className="text-right">
+                      <InfoLabel tooltip="Rata-rata skor dimensi anxious untuk relasi ini berdasarkan jawaban ECR-RS.">
+                        Anxious
+                      </InfoLabel>
+                    </div>
+                    <div className="text-right">
+                      <InfoLabel tooltip="Rata-rata skor dimensi avoidance untuk relasi ini berdasarkan jawaban ECR-RS.">
+                        Avoidance
+                      </InfoLabel>
+                    </div>
                   </div>
-                ))}
-              </AppPanel>
+
+                  {result.ecrRsScores.map((score) => (
+                    <div
+                      key={score.relation}
+                      className="grid grid-cols-[minmax(0,1.4fr)_120px_120px] gap-4 border-b border-border/50 px-5 py-4 text-sm last:border-b-0"
+                    >
+                      <div className="font-medium text-foreground">{score.relation}</div>
+                      <div className="text-right text-foreground">{score.anxious.toFixed(2)}</div>
+                      <div className="text-right text-foreground">{score.avoidance.toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              </ResultCard>
             ) : null}
-            <AppPanel
-              title="Feedback klinisi"
-              className="md:col-span-2"
-              contentClassName="pt-2 pb-5"
-            >
-              {result.feedback ? (
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">
-                    {result.feedback.verdict === 'correct'
-                      ? 'Hasil ditandai sesuai.'
-                      : `Hasil dikoreksi menjadi ${result.feedback.correctedLabel === 'secure' ? 'Secure' : 'Insecure'}.`}
-                  </p>
-                  <p>
-                    Feedback tersimpan pada trace sesi lokal dan report training di folder artifact
-                    aplikasi.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-xl bg-card"
-                      disabled={saving}
-                      onClick={() =>
-                        setPendingFeedback({ verdict: 'correct', correctedLabel: null })
-                      }
-                    >
-                      Sesuai
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={saving || !oppositeLabel}
-                      onClick={() =>
-                        oppositeLabel
-                          ? setPendingFeedback({
-                              verdict: 'incorrect',
-                              correctedLabel: oppositeLabel
-                            })
-                          : null
-                      }
-                    >
-                      Tidak sesuai
-                    </Button>
+
+            <div className="grid gap-4 lg:col-span-2 lg:grid-cols-[minmax(220px,0.55fr)_minmax(0,2.25fr)]">
+              <ResultCard title="Feedback klinisi">
+                {result.feedback ? (
+                  <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">
+                      {result.feedback.verdict === 'correct'
+                        ? 'Hasil ditandai sesuai.'
+                        : `Hasil dikoreksi menjadi ${result.feedback.correctedLabel === 'secure' ? 'Secure' : 'Insecure'}.`}
+                    </p>
+                    <p>
+                      Feedback tersimpan pada trace sesi lokal dan report training di folder artifact
+                      aplikasi.
+                    </p>
                   </div>
+                ) : (
+                  <div className="flex min-h-24 flex-col justify-center gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        Hasil saat ini
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">{classification}</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 rounded-full border-primary/50 px-6 text-primary hover:bg-primary/5"
+                        disabled={saving || !oppositeLabel}
+                        onClick={() =>
+                          oppositeLabel
+                            ? setPendingFeedback({
+                                verdict: 'incorrect',
+                                correctedLabel: oppositeLabel
+                              })
+                            : null
+                        }
+                      >
+                        Ubah hasil ke {oppositeClassification}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </ResultCard>
+
+              <ResultCard title="Catatan pasca-asesmen">
+                <AppTextField
+                  label="Catatan pasca-asesmen"
+                  hideLabel
+                  value={noteDraft}
+                  onChange={setNoteDraft}
+                  placeholder="Tambahkan catatan klinis pasca-asesmen, misalnya kecenderungan avoidant/anxious atau konteks attachment yang perlu ditinjau."
+                  multiline
+                  inputClassName="rounded-[16px] bg-card"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {postAssessmentNoteUpdatedAt ? (
+                    <p className="text-xs text-muted-foreground">
+                      {`Terakhir disimpan ${formatDateTime(postAssessmentNoteUpdatedAt)}`}
+                    </p>
+                  ) : (
+                    <span />
+                  )}
+                  <Button
+                    type="button"
+                    className="h-11 rounded-xl px-6"
+                    disabled={saving || !noteDirty}
+                    onClick={() => onSavePostAssessmentNote(noteDraft)}
+                  >
+                    {saving ? 'Menyimpan...' : 'Simpan catatan'}
+                  </Button>
                 </div>
-              )}
-            </AppPanel>
+              </ResultCard>
+            </div>
           </div>
 
-          <StatusNotice tone="info" title="Hanya pendukung keputusan klinis">
-            Hasil ini mendukung tinjauan klinisi. Ini bukan diagnosis otomatis atau rekomendasi
-            terapi.
-          </StatusNotice>
+          <div className="rounded-[20px] border border-info/15 bg-info-container/45 px-5 py-4 text-info-container-foreground shadow-[var(--shadow-card)]">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-6 items-center justify-center rounded-full border border-current/25">
+                i
+              </div>
+              <div>
+                <p className="font-semibold">Hanya pendukung keputusan klinis</p>
+                <p className="mt-1 text-sm text-info-container-foreground/80">
+                  Hasil ini mendukung tinjauan klinisi. Ini bukan diagnosis otomatis atau
+                  rekomendasi terapi.
+                </p>
+              </div>
+            </div>
+          </div>
         </>
       ) : (
         <div className="rounded-[32px] border border-destructive/20 bg-destructive/8 px-6 py-10 text-center text-sm text-destructive">
@@ -1253,7 +1524,7 @@ function ResultStage({
         <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-2xl tracking-[-0.04em]">
-              Simpan feedback klinisi?
+              Ubah hasil asesmen?
             </DialogTitle>
             <DialogDescription className="text-base leading-7">
               {pendingFeedback?.verdict === 'correct'
@@ -1283,7 +1554,7 @@ function ResultStage({
                 setPendingFeedback(null)
               }}
             >
-              {saving ? 'Menyimpan...' : 'Simpan'}
+              {saving ? 'Menyimpan...' : 'Ubah hasil'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1293,12 +1564,14 @@ function ResultStage({
         <Button
           type="button"
           variant="outline"
-          className="rounded-xl bg-card"
+          className="h-11 rounded-xl bg-card px-5"
           onClick={() => setWipeDialogOpen(true)}
         >
+          <Trash2Icon className="size-4" />
           Hapus data sesi
         </Button>
-        <Button type="button" className="rounded-xl" onClick={onExitAssessment}>
+        <Button type="button" className="h-11 rounded-xl px-6" onClick={onExitAssessment}>
+          <CheckIcon className="size-4" />
           Selesai
         </Button>
       </div>
@@ -1342,6 +1615,91 @@ function ResultStage({
   )
 }
 
+function ResultCard({
+  title,
+  className,
+  children
+}: {
+  title: string
+  className?: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <div
+      className={`rounded-[24px] border border-border/70 bg-card/95 p-6 shadow-[var(--shadow-card)] ${
+        className ?? ''
+      }`}
+    >
+      <h3 className="text-xl font-semibold tracking-[-0.03em] text-foreground">{title}</h3>
+      <div className="mt-5">{children}</div>
+    </div>
+  )
+}
+
+function ResultInfoTable({
+  rows
+}: {
+  rows: Array<{ label: React.ReactNode; value: React.ReactNode }>
+}): React.JSX.Element {
+  return (
+    <div className="divide-y divide-border/60 rounded-[20px] border border-border/60">
+      {rows.map((row) => (
+        <div
+          key={typeof row.label === 'string' ? row.label : String(row.value)}
+          className="flex items-center justify-between gap-6 px-5 py-4 text-sm"
+        >
+          <div className="text-muted-foreground">{row.label}</div>
+          <div className="text-right font-medium text-foreground">{row.value}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ProbabilityDonut({
+  secure,
+  insecure
+}: {
+  secure: number
+  insecure: number
+}): React.JSX.Element {
+  const secureDegrees = Math.max(0, Math.min(360, secure * 360))
+
+  return (
+    <div className="flex items-center justify-center">
+      <div
+        className="flex size-40 items-center justify-center rounded-full"
+        style={{
+          backgroundImage: `conic-gradient(var(--info-container) 0deg ${secureDegrees}deg, var(--info) ${secureDegrees}deg 360deg)`
+        }}
+        aria-label={`Probabilitas secure ${formatPercent(secure)} dan insecure ${formatPercent(insecure)}`}
+      >
+        <div className="flex size-24 items-center justify-center rounded-full border border-card/80 bg-card" />
+      </div>
+    </div>
+  )
+}
+
+function ProbabilityLegendRow({
+  label,
+  value,
+  colorClassName
+}: {
+  label: string
+  value: string
+  colorClassName: string
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-4 text-sm">
+      <div className="flex items-center gap-3 text-muted-foreground">
+        <span className={`size-3 rounded-full ${colorClassName}`} />
+        <span>{label}</span>
+      </div>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  )
+}
+
 function formatPercent(value: number): string {
   const percent = value * 100
 
@@ -1366,6 +1724,14 @@ function formatDuration(durationMs: number): string {
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString('id-ID')
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric'
+  }).format(new Date(value))
 }
 
 function formatModelVersion(value: string): string {

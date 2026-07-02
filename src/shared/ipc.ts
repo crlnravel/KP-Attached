@@ -22,6 +22,7 @@ export const CHANNELS = {
   updateStep: 'attached:sessions:update-step',
   saveArtifact: 'attached:sessions:save-artifact',
   saveQuestionnaire: 'attached:sessions:save-questionnaire',
+  savePostAssessmentNote: 'attached:sessions:save-post-assessment-note',
   startInference: 'attached:inference:start',
   getInferenceStatus: 'attached:inference:get-status',
   submitResultFeedback: 'attached:inference:submit-feedback'

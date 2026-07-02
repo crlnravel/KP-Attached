@@ -7,6 +7,7 @@ import type {
   DashboardSnapshot,
   InferenceStatus,
   ReviewAccessRequestInput,
+  SavePostAssessmentNoteInput,
   SubmitResultFeedbackInput,
   UpdateAccountEmailInput,
   UpdatePsychologistProfileInput,
@@ -68,7 +69,9 @@ const attachedApi = {
     saveArtifact: (input: SaveArtifactInput): Promise<SessionRecord> =>
       ipcRenderer.invoke(CHANNELS.saveArtifact, input),
     saveQuestionnaire: (input: SaveQuestionnaireInput): Promise<SessionRecord> =>
-      ipcRenderer.invoke(CHANNELS.saveQuestionnaire, input)
+      ipcRenderer.invoke(CHANNELS.saveQuestionnaire, input),
+    savePostAssessmentNote: (input: SavePostAssessmentNoteInput): Promise<SessionRecord> =>
+      ipcRenderer.invoke(CHANNELS.savePostAssessmentNote, input)
   },
   inference: {
     start: (sessionId: string): Promise<InferenceStatus> =>

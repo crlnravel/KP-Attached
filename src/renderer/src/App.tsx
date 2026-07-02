@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Code2Icon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { AppShell } from '@/components/app-shell'
+import { StatusNotice } from '@/components/app-ui'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import {
   navigateToView,
   parseAuthenticatedView,
   type AuthenticatedView
 } from '@/components/app-shared'
-import { AssessmentView } from '@/features/assessment/assessment-view'
+import { AssessmentView, type ExistingPatientOption } from '@/features/assessment/assessment-view'
 import { useAssessmentController } from '@/features/assessment/use-assessment-controller'
 import { AdminView } from '@/features/admin/admin-view'
 import { ContactDeveloperView } from '@/features/contact/contact-developer-view'
@@ -68,6 +78,52 @@ function mergeSessionIntoDashboard(
     sessions: nextSessions,
     summary: buildDashboardSummary(nextSessions)
   }
+}
+
+type PatientChoice = ExistingPatientOption
+
+type AssessmentPatientMode = 'new' | 'existing' | null
+
+function getPatientChoiceKey(session: SessionRecord): string {
+  return (
+    session.draft.participantId.trim().toLowerCase() ||
+    session.draft.participantName.trim().toLowerCase() ||
+    session.id
+  )
+}
+
+function buildPatientChoices(sessions: SessionRecord[]): PatientChoice[] {
+  const groups = new Map<string, SessionRecord[]>()
+  for (const session of sessions) {
+    if (!session.draft.participantId.trim() && !session.draft.participantName.trim()) {
+      continue
+    }
+
+    const key = getPatientChoiceKey(session)
+    groups.set(key, [...(groups.get(key) ?? []), session])
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupSessions]) => {
+      const sortedSessions = [...groupSessions].sort(
+        (first, second) =>
+          new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
+      )
+      const latestSession = sortedSessions[0]
+      return {
+        key,
+        name: latestSession.draft.participantName || 'Peserta belum diisi',
+        participantId: latestSession.draft.participantId || latestSession.id,
+        age: latestSession.draft.age,
+        notes: latestSession.draft.notes,
+        lastUpdated: latestSession.updatedAt,
+        assessmentCount: sortedSessions.length
+      }
+    })
+    .sort(
+      (first, second) =>
+        new Date(second.lastUpdated).getTime() - new Date(first.lastUpdated).getTime()
+    )
 }
 
 function createEmptyRegistration(): PsychologistRegistrationInput {
@@ -183,8 +239,16 @@ function App(): React.JSX.Element {
   const [authMode, setAuthMode] = useState<AuthFormMode>('request_access')
   const [authNotice, setAuthNotice] = useState<AuthNotice>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [assessmentPatientMode, setAssessmentPatientMode] = useState<AssessmentPatientMode>(null)
+  const [startAssessmentDialogOpen, setStartAssessmentDialogOpen] = useState(false)
+  const [startAssessmentPending, setStartAssessmentPending] = useState(false)
+  const [startAssessmentError, setStartAssessmentError] = useState<string | null>(null)
   const activeSession =
     dashboardSnapshot?.sessions.find((session) => isActiveSessionState(session.state)) ?? null
+  const patientChoices = useMemo(
+    () => buildPatientChoices(dashboardSnapshot?.sessions ?? []),
+    [dashboardSnapshot?.sessions]
+  )
   const startAssessmentDisabled = dashboardPending || authSnapshot?.user?.role === 'admin'
   const hasUnsubmittedAccessRequest =
     !authSnapshot?.user &&
@@ -478,6 +542,7 @@ function App(): React.JSX.Element {
         setAdminSnapshot(null)
         setPassword('')
         setActiveSessionId(null)
+        setAssessmentPatientMode(null)
         setAuthMode('sign_in')
         setAuthNotice(null)
         window.location.hash = ''
@@ -496,6 +561,7 @@ function App(): React.JSX.Element {
       setDashboardError(null)
       setAdminError(null)
       setActiveSessionId(null)
+      setAssessmentPatientMode(null)
       setPassword('')
       setAuthMode(snapshot.initialized ? 'sign_in' : 'request_access')
       setAuthNotice({
@@ -517,24 +583,64 @@ function App(): React.JSX.Element {
     if (activeSession) {
       setDashboardError(null)
       setActiveSessionId(activeSession.id)
+      setAssessmentPatientMode(null)
       handleNavigate('assessment')
       return
     }
+
+    setStartAssessmentError(null)
+    setStartAssessmentDialogOpen(true)
+  }
+
+  const handleCreateNewAssessment = (): void => {
+    setStartAssessmentPending(true)
+    setStartAssessmentError(null)
 
     void attachedApi.sessions
       .create()
       .then((session) => {
         setActiveSessionId(session.id)
+        setAssessmentPatientMode('new')
+        setStartAssessmentDialogOpen(false)
         handleNavigate('assessment')
         return refreshDashboard()
       })
       .catch((error) => {
-        setDashboardError(error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.')
+        setStartAssessmentError(
+          error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.'
+        )
+      })
+      .finally(() => {
+        setStartAssessmentPending(false)
+      })
+  }
+
+  const handleCreateExistingPatientAssessment = (): void => {
+    setStartAssessmentPending(true)
+    setStartAssessmentError(null)
+
+    void attachedApi.sessions
+      .create()
+      .then((session) => {
+        setActiveSessionId(session.id)
+        setAssessmentPatientMode('existing')
+        setStartAssessmentDialogOpen(false)
+        handleNavigate('assessment')
+        return refreshDashboard()
+      })
+      .catch((error) => {
+        setStartAssessmentError(
+          error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.'
+        )
+      })
+      .finally(() => {
+        setStartAssessmentPending(false)
       })
   }
 
   const handleOpenSession = (sessionId: string): void => {
     setActiveSessionId(sessionId)
+    setAssessmentPatientMode(null)
     handleNavigate('assessment')
   }
 
@@ -543,6 +649,7 @@ function App(): React.JSX.Element {
       await attachedApi.sessions.abort(sessionId)
       if (activeSessionId === sessionId) {
         setActiveSessionId(null)
+        setAssessmentPatientMode(null)
       }
       await refreshDashboard()
     },
@@ -552,6 +659,17 @@ function App(): React.JSX.Element {
   const handleDeleteSessionRecordings = useCallback(
     async (sessionId: string): Promise<void> => {
       await attachedApi.sessions.deleteRecordings(sessionId)
+      await refreshDashboard()
+    },
+    [refreshDashboard]
+  )
+
+  const handleSavePostAssessmentNote = useCallback(
+    async (sessionId: string, text: string): Promise<void> => {
+      const session = await attachedApi.sessions.savePostAssessmentNote({ sessionId, text })
+      setDashboardSnapshot((current) =>
+        current ? mergeSessionIntoDashboard(current, session) : current
+      )
       await refreshDashboard()
     },
     [refreshDashboard]
@@ -619,9 +737,12 @@ function App(): React.JSX.Element {
         <AssessmentView
           controller={assessment}
           modelRuntimeReady={dashboardSnapshot?.modelRuntimeReady}
+          patientMode={assessmentPatientMode}
+          existingPatientOptions={patientChoices}
           onExitAssessment={() => {
             if (assessment.state.session && !isActiveSessionState(assessment.state.session.state)) {
               setActiveSessionId(null)
+              setAssessmentPatientMode(null)
             }
             handleNavigate('dashboard')
             void refreshDashboard()
@@ -652,6 +773,7 @@ function App(): React.JSX.Element {
             onOpenSession={handleOpenSession}
             onAbortSession={handleAbortSession}
             onDeleteSessionRecordings={handleDeleteSessionRecordings}
+            onSavePostAssessmentNote={handleSavePostAssessmentNote}
           />
         )}
         {view === 'admin' && (
@@ -675,8 +797,137 @@ function App(): React.JSX.Element {
         )}
         {view === 'contact' && <ContactDeveloperView />}
       </AppShell>
+      <StartAssessmentDialog
+        open={startAssessmentDialogOpen}
+        hasExistingPatients={patientChoices.length > 0}
+        isSubmitting={startAssessmentPending}
+        error={startAssessmentError}
+        onOpenChange={setStartAssessmentDialogOpen}
+        onCreateNew={handleCreateNewAssessment}
+        onSelectExisting={handleCreateExistingPatientAssessment}
+      />
       {authSnapshot.remoteAuth.debugAutoApprovalEnabled ? <DevModeMarker /> : null}
     </main>
+  )
+}
+
+function StartAssessmentDialog({
+  open,
+  hasExistingPatients,
+  isSubmitting,
+  error,
+  onOpenChange,
+  onCreateNew,
+  onSelectExisting
+}: {
+  open: boolean
+  hasExistingPatients: boolean
+  isSubmitting: boolean
+  error: string | null
+  onOpenChange: (open: boolean) => void
+  onCreateNew: () => void
+  onSelectExisting: () => void
+}): React.JSX.Element {
+  const [selectedMode, setSelectedMode] = useState<'new' | 'existing' | null>(null)
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (!nextOpen) {
+      setSelectedMode(null)
+    }
+    onOpenChange(nextOpen)
+  }
+
+  const submitSelection = (): void => {
+    if (selectedMode === 'new') {
+      setSelectedMode(null)
+      onCreateNew()
+      return
+    }
+
+    if (selectedMode === 'existing') {
+      setSelectedMode(null)
+      onSelectExisting()
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[86vh] overflow-y-auto rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-2xl tracking-[-0.04em]">Mulai asesmen</DialogTitle>
+          <DialogDescription className="text-base leading-7">
+            Pilih jenis pasien untuk menentukan tampilan langkah pertama asesmen.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          {error ? (
+            <StatusNotice tone="error" title="Asesmen gagal dibuat">
+              {error}
+            </StatusNotice>
+          ) : null}
+
+          <label className="flex cursor-pointer items-start gap-4 rounded-[22px] border border-border/70 bg-background/70 p-5 transition hover:border-primary/30 hover:bg-muted/35">
+            <input
+              type="radio"
+              name="assessment-patient-mode"
+              className="mt-1 size-5 accent-primary"
+              checked={selectedMode === 'new'}
+              disabled={isSubmitting}
+              onChange={() => setSelectedMode('new')}
+            />
+            <div>
+              <p className="font-medium text-foreground">Pasien baru</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Langkah pertama menampilkan form identitas peserta seperti biasa.
+              </p>
+            </div>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-4 rounded-[22px] border border-border/70 bg-background/70 p-5 transition hover:border-primary/30 hover:bg-muted/35">
+            <input
+              type="radio"
+              name="assessment-patient-mode"
+              className="mt-1 size-5 accent-primary"
+              checked={selectedMode === 'existing'}
+              disabled={isSubmitting || !hasExistingPatients}
+              onChange={() => setSelectedMode('existing')}
+            />
+            <div>
+              <p className="font-medium text-foreground">Pasien terdaftar</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Langkah pertama diganti menjadi pencarian dan pemilihan pasien.
+              </p>
+              {!hasExistingPatients ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Belum ada pasien lama yang bisa dipilih.
+                </p>
+              ) : null}
+            </div>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl bg-card"
+            disabled={isSubmitting}
+            onClick={() => handleOpenChange(false)}
+          >
+            Batal
+          </Button>
+          <Button
+            type="button"
+            className="rounded-xl"
+            disabled={isSubmitting || selectedMode === null}
+            onClick={submitSelection}
+          >
+            {isSubmitting ? 'Membuat...' : 'Pilih'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
