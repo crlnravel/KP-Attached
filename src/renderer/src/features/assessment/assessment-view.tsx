@@ -43,6 +43,7 @@ import {
   stimulusVideos
 } from '@/features/assessment/model'
 import type { AssessmentController } from '@/features/assessment/use-assessment-controller'
+import type { ExistingPatientOption } from '@/features/session/session-record-utils'
 
 type AssessmentViewProps = {
   controller: AssessmentController
@@ -50,16 +51,6 @@ type AssessmentViewProps = {
   existingPatientOptions?: ExistingPatientOption[]
   modelRuntimeReady?: boolean
   onExitAssessment: () => void
-}
-
-export type ExistingPatientOption = {
-  key: string
-  name: string
-  participantId: string
-  age: string
-  notes: string
-  lastUpdated: string
-  assessmentCount: number
 }
 
 const CONSENT_DISPLAY_STATEMENT =
@@ -549,10 +540,7 @@ function ExistingPatientPicker({
 
   return (
     <>
-      <PageHeading
-        eyebrow="Pasien terdaftar"
-        title="Pilih pasien untuk asesmen ulang."
-      />
+      <PageHeading eyebrow="Pasien terdaftar" title="Pilih pasien untuk asesmen ulang." />
 
       <div className="rounded-[24px] border border-border/60 bg-card/92 p-6 shadow-sm sm:p-8">
         <AppTextField
@@ -567,42 +555,48 @@ function ExistingPatientPicker({
 
         <div className="mt-5 overflow-x-auto rounded-[18px] border border-border/60 bg-background/60">
           <div className="min-w-[980px]">
-          <div className="grid grid-cols-[minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] gap-4 border-b border-border/60 bg-card/60 px-14 py-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            <span>NAMA</span>
-            <span>ID</span>
-            <span className="text-right whitespace-nowrap">JUMLAH ASESMEN</span>
-            <span className="whitespace-nowrap">TANGGAL ASESMEN TERAKHIR</span>
-          </div>
-
-          <div className="max-h-[24rem] overflow-y-auto">
-          {visiblePatients.length > 0 ? (
-            visiblePatients.map((patient) => (
-              <label
-                key={patient.key}
-                className="grid w-full cursor-pointer grid-cols-[28px_minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] items-center gap-4 border-b border-border/50 px-5 py-4 text-left transition last:border-b-0 hover:bg-muted/45"
-              >
-                <input
-                  type="radio"
-                  name="existing-patient"
-                  className="size-5 accent-primary"
-                  checked={selectedPatientKey === patient.key}
-                  disabled={busy}
-                  onChange={() => setSelectedPatientKey(patient.key)}
-                />
-                <span className="truncate text-sm font-medium text-foreground">{patient.name}</span>
-                <span className="truncate text-sm text-muted-foreground">{patient.participantId}</span>
-                <span className="text-right text-sm font-medium text-foreground">
-                  {patient.assessmentCount}
-                </span>
-                <span className="text-sm text-foreground">{formatDate(patient.lastUpdated)}</span>
-              </label>
-            ))
-          ) : (
-            <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-              Tidak ada pasien yang cocok.
+            <div className="grid grid-cols-[minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] gap-4 border-b border-border/60 bg-card/60 px-14 py-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <span>NAMA</span>
+              <span>ID</span>
+              <span className="text-right whitespace-nowrap">JUMLAH ASESMEN</span>
+              <span className="whitespace-nowrap">TANGGAL ASESMEN TERAKHIR</span>
             </div>
-          )}
-          </div>
+
+            <div className="max-h-[24rem] overflow-y-auto">
+              {visiblePatients.length > 0 ? (
+                visiblePatients.map((patient) => (
+                  <label
+                    key={patient.key}
+                    className="grid w-full cursor-pointer grid-cols-[28px_minmax(220px,1.15fr)_minmax(220px,0.95fr)_200px_280px] items-center gap-4 border-b border-border/50 px-5 py-4 text-left transition last:border-b-0 hover:bg-muted/45"
+                  >
+                    <input
+                      type="radio"
+                      name="existing-patient"
+                      className="size-5 accent-primary"
+                      checked={selectedPatientKey === patient.key}
+                      disabled={busy}
+                      onChange={() => setSelectedPatientKey(patient.key)}
+                    />
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {patient.name}
+                    </span>
+                    <span className="truncate text-sm text-muted-foreground">
+                      {patient.participantId}
+                    </span>
+                    <span className="text-right text-sm font-medium text-foreground">
+                      {patient.assessmentCount}
+                    </span>
+                    <span className="text-sm text-foreground">
+                      {formatDate(patient.lastUpdated)}
+                    </span>
+                  </label>
+                ))
+              ) : (
+                <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+                  Tidak ada pasien yang cocok.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1288,11 +1282,7 @@ function ResultStage({
                   </h2>
                   <p className="text-lg text-muted-foreground">
                     Tingkat keyakinan:{' '}
-                    <span
-                      className={`font-semibold ${
-                        isSecure ? 'text-success' : 'text-warning'
-                      }`}
-                    >
+                    <span className={`font-semibold ${isSecure ? 'text-success' : 'text-warning'}`}>
                       {formatPercent(result.confidence)}
                     </span>
                   </p>
@@ -1429,8 +1419,8 @@ function ResultStage({
                         : `Hasil dikoreksi menjadi ${result.feedback.correctedLabel === 'secure' ? 'Secure' : 'Insecure'}.`}
                     </p>
                     <p>
-                      Feedback tersimpan pada trace sesi lokal dan report training di folder artifact
-                      aplikasi.
+                      Feedback tersimpan pada trace sesi lokal dan report training di folder
+                      artifact aplikasi.
                     </p>
                   </div>
                 ) : (
@@ -1523,9 +1513,7 @@ function ResultStage({
       >
         <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-2xl tracking-[-0.04em]">
-              Ubah hasil asesmen?
-            </DialogTitle>
+            <DialogTitle className="text-2xl tracking-[-0.04em]">Ubah hasil asesmen?</DialogTitle>
             <DialogDescription className="text-base leading-7">
               {pendingFeedback?.verdict === 'correct'
                 ? `Hasil akan ditandai sesuai sebagai ${classification}.`

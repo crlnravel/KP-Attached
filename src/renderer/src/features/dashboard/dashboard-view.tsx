@@ -32,6 +32,11 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
+import {
+  buildPatientRows,
+  isActiveSession,
+  type PatientRow
+} from '@/features/session/session-record-utils'
 import { cn } from '@/lib/utils'
 import type { DashboardSnapshot, SessionRecord } from '@/lib/local-api'
 
@@ -55,62 +60,6 @@ enum AssessmentStatus {
 
 type SortKey = 'name' | 'id' | 'date' | 'count'
 type SortDirection = 'asc' | 'desc'
-
-type PatientRow = {
-  key: string
-  name: string
-  participantId: string
-  age: string
-  notes: string
-  date: string
-  sortTime: number
-  assessmentCount: number
-  sessions: SessionRecord[]
-}
-
-function isActiveSession(session: SessionRecord): boolean {
-  return (
-    session.state === 'draft' ||
-    session.state === 'ready_for_inference' ||
-    session.state === 'running_inference'
-  )
-}
-
-function getPatientKey(session: SessionRecord): string {
-  return (
-    session.draft.participantId.trim().toLowerCase() ||
-    session.draft.participantName.trim().toLowerCase() ||
-    session.id
-  )
-}
-
-function buildPatientRows(sessions: SessionRecord[]): PatientRow[] {
-  const groups = new Map<string, SessionRecord[]>()
-
-  for (const session of sessions) {
-    const key = getPatientKey(session)
-    groups.set(key, [...(groups.get(key) ?? []), session])
-  }
-
-  return Array.from(groups.entries()).map(([key, groupSessions]) => {
-    const sortedSessions = [...groupSessions].sort(
-      (first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
-    )
-    const latestSession = sortedSessions[0]
-
-    return {
-      key,
-      name: latestSession.draft.participantName || 'Peserta belum diisi',
-      participantId: latestSession.draft.participantId || latestSession.id,
-      age: latestSession.draft.age,
-      notes: latestSession.draft.notes,
-      date: formatDate(latestSession.updatedAt),
-      sortTime: new Date(latestSession.updatedAt).getTime(),
-      assessmentCount: sortedSessions.length,
-      sessions: sortedSessions
-    }
-  })
-}
 
 export function DashboardView({
   snapshot,
@@ -426,7 +375,7 @@ export function DashboardView({
                       {row.assessmentCount}
                     </span>
                   </TableCell>
-                  <TableCell className="text-foreground">{row.date}</TableCell>
+                  <TableCell className="text-foreground">{formatDate(row.lastUpdated)}</TableCell>
                 </TableRow>
               ))}
               {filteredPatients.length === 0 && (
@@ -527,7 +476,7 @@ function PatientDetailPage({
             </AppPanel>
             <AppPanel title="Ringkasan" contentClassName="flex flex-col gap-3">
               <InfoRow label="Jumlah asesmen" value={String(patient.assessmentCount)} />
-              <InfoRow label="Terakhir diperbarui" value={patient.date} />
+              <InfoRow label="Terakhir diperbarui" value={formatDate(patient.lastUpdated)} />
             </AppPanel>
           </div>
 

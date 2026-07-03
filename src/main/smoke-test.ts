@@ -121,6 +121,12 @@ function createRendererScript(email: string, password: string, timeoutMs: number
         })
       }
 
+      const findVisibleLabel = (text) => {
+        return [...document.querySelectorAll('label')]
+          .filter(isVisible)
+          .find((label) => textOf(label).includes(text)) ?? null
+      }
+
       const getSingleActiveSessionId = async () => {
         const sessions = await window.attached.sessions.list()
         const activeSessions = sessions.filter((session) => activeStates.has(session.state))
@@ -150,6 +156,16 @@ function createRendererScript(email: string, password: string, timeoutMs: number
 
       const waitForAssessmentIdentity = async () =>
         waitFor(() => (hasVisibleText('Verifikasi data peserta.') ? true : false), 'the assessment identity step')
+
+      const waitForAssessmentStartFlow = async () =>
+        waitFor(
+          () =>
+            hasVisibleText('Verifikasi data peserta.') ||
+            (hasVisibleText('Mulai asesmen') && hasVisibleText('Pasien baru'))
+              ? true
+              : false,
+          'the start assessment flow'
+        )
 
       const ensureSignedOut = async () => {
         const signOutButton = findButton('Keluar')
@@ -204,6 +220,27 @@ function createRendererScript(email: string, password: string, timeoutMs: number
         }, 'enabled button "' + label + '"')
       }
 
+      const openNewPatientAssessment = async () => {
+        const startAssessmentButton = await getEnabledButton('Asesmen baru')
+        clickElement(startAssessmentButton, 'the start assessment button')
+        log('Opened the assessment once')
+
+        await waitForAssessmentStartFlow()
+        if (hasVisibleText('Verifikasi data peserta.')) {
+          return
+        }
+
+        const newPatientOption = await waitFor(
+          () => findVisibleLabel('Pasien baru'),
+          'the new patient assessment option'
+        )
+        clickElement(newPatientOption, 'the new patient assessment option')
+
+        const confirmButton = await getEnabledButton('Pilih')
+        clickElement(confirmButton, 'the start assessment confirm button')
+        log('Selected the new patient assessment mode')
+      }
+
       const hasAssessmentReview = () =>
         hasVisibleText('Data Selesai Didapatkan')
 
@@ -226,10 +263,7 @@ function createRendererScript(email: string, password: string, timeoutMs: number
 
       await abortDashboardActiveSessionIfPresent()
 
-      const startAssessmentButton = await getEnabledButton('Asesmen baru')
-      clickElement(startAssessmentButton, 'the start assessment button')
-      log('Opened the assessment once')
-
+      await openNewPatientAssessment()
       await waitForAssessmentIdentity()
       const firstSessionId = await getSingleActiveSessionId()
       log('First active session: ' + firstSessionId)

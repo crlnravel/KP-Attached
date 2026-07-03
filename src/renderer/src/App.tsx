@@ -1,30 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Code2Icon } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { AppShell } from '@/components/app-shell'
-import { StatusNotice } from '@/components/app-ui'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
 import {
   navigateToView,
   parseAuthenticatedView,
   type AuthenticatedView
 } from '@/components/app-shared'
-import { AssessmentView, type ExistingPatientOption } from '@/features/assessment/assessment-view'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { AssessmentView } from '@/features/assessment/assessment-view'
 import { useAssessmentController } from '@/features/assessment/use-assessment-controller'
 import { AdminView } from '@/features/admin/admin-view'
+import {
+  ACCESS_REQUEST_EXIT_WARNING,
+  createEmptyRegistration,
+  createRegistrationFromSnapshotUser,
+  formatAppError,
+  hasAccessRequestProgress,
+  type AssessmentPatientMode
+} from '@/features/app/app-flow'
+import { StartAssessmentDialog } from '@/features/app/start-assessment-dialog'
+import { LoginView } from '@/features/auth/login-view'
 import { ContactDeveloperView } from '@/features/contact/contact-developer-view'
 import { DashboardView } from '@/features/dashboard/dashboard-view'
-import { LoginView } from '@/features/auth/login-view'
 import { ProfileView } from '@/features/profile/profile-view'
+import {
+  buildExistingPatientOptions,
+  isActiveSessionState,
+  mergeSessionIntoDashboard
+} from '@/features/session/session-record-utils'
 import { attachedApi } from '@/lib/local-api'
 import type {
   AdminSnapshot,
@@ -34,178 +38,18 @@ import type {
   DashboardSnapshot,
   PsychologistRegistrationInput,
   ReviewAccessRequestInput,
-  SessionRecord,
   UpdateAccountEmailInput,
   UpdatePsychologistProfileInput,
   VerificationDocument,
   VerificationDocumentKind
 } from '@/lib/local-api'
-import { createEmptyVerificationDocuments } from '@/lib/local-api'
 
 const coverImageUrl = new URL('../../../resources/cover-image-login.avif', import.meta.url).href
-const ACCESS_REQUEST_EXIT_WARNING = 'Permintaan akses belum dikirim. Tinggalkan halaman ini?'
 
-function isActiveSessionState(state: DashboardSnapshot['sessions'][number]['state']): boolean {
-  return state === 'draft' || state === 'ready_for_inference' || state === 'running_inference'
-}
-
-function buildDashboardSummary(sessions: SessionRecord[]): DashboardSnapshot['summary'] {
-  return {
-    totalSessions: sessions.length,
-    completedSessions: sessions.filter((session) => session.state === 'completed').length,
-    lowConfidenceSessions: sessions.filter((session) => session.state === 'low_confidence').length,
-    failedSessions: sessions.filter((session) => session.state === 'failed').length,
-    pendingSessions: sessions.filter((session) => isActiveSessionState(session.state)).length
-  }
-}
-
-function mergeSessionIntoDashboard(
-  snapshot: DashboardSnapshot,
-  session: SessionRecord
-): DashboardSnapshot {
-  const existingIndex = snapshot.sessions.findIndex((current) => current.id === session.id)
-  const nextSessions =
-    existingIndex === -1
-      ? [session, ...snapshot.sessions]
-      : snapshot.sessions.map((current) => (current.id === session.id ? session : current))
-
-  nextSessions.sort(
-    (first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
-  )
-
-  return {
-    ...snapshot,
-    sessions: nextSessions,
-    summary: buildDashboardSummary(nextSessions)
-  }
-}
-
-type PatientChoice = ExistingPatientOption
-
-type AssessmentPatientMode = 'new' | 'existing' | null
-
-function getPatientChoiceKey(session: SessionRecord): string {
-  return (
-    session.draft.participantId.trim().toLowerCase() ||
-    session.draft.participantName.trim().toLowerCase() ||
-    session.id
-  )
-}
-
-function buildPatientChoices(sessions: SessionRecord[]): PatientChoice[] {
-  const groups = new Map<string, SessionRecord[]>()
-  for (const session of sessions) {
-    if (!session.draft.participantId.trim() && !session.draft.participantName.trim()) {
-      continue
-    }
-
-    const key = getPatientChoiceKey(session)
-    groups.set(key, [...(groups.get(key) ?? []), session])
-  }
-
-  return Array.from(groups.entries())
-    .map(([key, groupSessions]) => {
-      const sortedSessions = [...groupSessions].sort(
-        (first, second) =>
-          new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime()
-      )
-      const latestSession = sortedSessions[0]
-      return {
-        key,
-        name: latestSession.draft.participantName || 'Peserta belum diisi',
-        participantId: latestSession.draft.participantId || latestSession.id,
-        age: latestSession.draft.age,
-        notes: latestSession.draft.notes,
-        lastUpdated: latestSession.updatedAt,
-        assessmentCount: sortedSessions.length
-      }
-    })
-    .sort(
-      (first, second) =>
-        new Date(second.lastUpdated).getTime() - new Date(first.lastUpdated).getTime()
-    )
-}
-
-function createEmptyRegistration(): PsychologistRegistrationInput {
-  return {
-    legalName: '',
-    professionalPhone: '',
-    licenseType: 'licensed_psychologist',
-    licenseNumber: '',
-    licenseJurisdiction: '',
-    issuingBoard: '',
-    licenseIssuedAt: '',
-    licenseExpiresAt: '',
-    npiNumber: '',
-    doctoralDegree: '',
-    degreeInstitution: '',
-    degreeGraduationYear: '',
-    practiceOrganization: '',
-    practiceAddress: '',
-    specialtyArea: '',
-    documents: createEmptyVerificationDocuments()
-  }
-}
-
-function createRegistrationFromSnapshotUser(
-  user: NonNullable<AuthSnapshot['knownUser']>
-): PsychologistRegistrationInput {
-  return {
-    legalName: user.profile.legalName,
-    professionalPhone: user.profile.professionalPhone,
-    licenseType: user.profile.licenseType,
-    licenseNumber: user.profile.licenseNumber,
-    licenseJurisdiction: user.profile.licenseJurisdiction,
-    issuingBoard: user.profile.issuingBoard,
-    licenseIssuedAt: user.profile.licenseIssuedAt,
-    licenseExpiresAt: user.profile.licenseExpiresAt,
-    npiNumber: user.profile.npiNumber,
-    doctoralDegree: user.profile.doctoralDegree,
-    degreeInstitution: user.profile.degreeInstitution,
-    degreeGraduationYear: user.profile.degreeGraduationYear,
-    practiceOrganization: user.profile.practiceOrganization,
-    practiceAddress: user.profile.practiceAddress,
-    specialtyArea: user.profile.specialtyArea,
-    documents: {
-      ...createEmptyVerificationDocuments(),
-      ...user.profile.documents
-    }
-  }
-}
-
-function hasAccessRequestProgress(
-  email: string,
-  password: string,
-  registration: PsychologistRegistrationInput
-): boolean {
-  return (
-    email.trim().length > 0 ||
-    password.trim().length > 0 ||
-    Object.entries(registration).some(([field, value]) => {
-      if (field === 'documents') {
-        return Object.values(registration.documents).some(Boolean)
-      }
-
-      if (field === 'licenseType') {
-        return value !== 'licensed_psychologist'
-      }
-
-      return typeof value === 'string' && value.trim().length > 0
-    })
-  )
-}
-
-function formatAppError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) {
-    return fallback
-  }
-
-  const message = error.message
-    .replace(/^Error invoking remote method '[^']+': Error: /, '')
-    .replace(/^Error: /, '')
-    .trim()
-
-  return message.length > 0 ? message : fallback
+const defaultRemoteAuth: AuthSnapshot['remoteAuth'] = {
+  requestAccessEnabled: false,
+  approvalSyncEnabled: false,
+  debugAutoApprovalEnabled: false
 }
 
 type AuthNotice = {
@@ -243,10 +87,11 @@ function App(): React.JSX.Element {
   const [startAssessmentDialogOpen, setStartAssessmentDialogOpen] = useState(false)
   const [startAssessmentPending, setStartAssessmentPending] = useState(false)
   const [startAssessmentError, setStartAssessmentError] = useState<string | null>(null)
+
   const activeSession =
     dashboardSnapshot?.sessions.find((session) => isActiveSessionState(session.state)) ?? null
   const patientChoices = useMemo(
-    () => buildPatientChoices(dashboardSnapshot?.sessions ?? []),
+    () => buildExistingPatientOptions(dashboardSnapshot?.sessions ?? []),
     [dashboardSnapshot?.sessions]
   )
   const startAssessmentDisabled = dashboardPending || authSnapshot?.user?.role === 'admin'
@@ -258,11 +103,13 @@ function App(): React.JSX.Element {
   const applyAuthSnapshot = useCallback((snapshot: AuthSnapshot): void => {
     setAuthSnapshot(snapshot)
     setEmail(snapshot.user?.username ?? '')
+
     if (snapshot.user) {
       setRegistration(createRegistrationFromSnapshotUser(snapshot.user))
     } else {
       setRegistration(createEmptyRegistration())
     }
+
     setDashboardSnapshot((current) => {
       if (!current || !snapshot.user) {
         return current
@@ -272,12 +119,23 @@ function App(): React.JSX.Element {
     })
   }, [])
 
+  const handleNavigate = useCallback((nextView: AuthenticatedView): void => {
+    navigateToView(nextView)
+    setView(nextView)
+  }, [])
+
+  const clearAssessmentContext = useCallback((): void => {
+    setActiveSessionId(null)
+    setAssessmentPatientMode(null)
+  }, [])
+
   const refreshDashboard = useCallback(async (): Promise<void> => {
     if (!authSnapshot?.user || authSnapshot.user.role !== 'psychologist') {
       return
     }
 
     setDashboardPending(true)
+
     try {
       const snapshot = await attachedApi.dashboard.getSnapshot()
       setDashboardSnapshot(snapshot)
@@ -295,6 +153,7 @@ function App(): React.JSX.Element {
     }
 
     setAdminPending(true)
+
     try {
       const snapshot = await attachedApi.admin.getSnapshot()
       setAdminSnapshot(snapshot)
@@ -313,48 +172,76 @@ function App(): React.JSX.Element {
       void refreshDashboard()
     },
     onSessionAborted: () => {
-      setActiveSessionId(null)
+      clearAssessmentContext()
       handleNavigate('dashboard')
       void refreshDashboard()
     }
   })
 
   useEffect(() => {
-    void attachedApi.auth
-      .getSnapshot()
-      .then((snapshot) => {
+    let isCancelled = false
+
+    const loadInitialState = async (): Promise<void> => {
+      try {
+        const snapshot = await attachedApi.auth.getSnapshot()
+        if (isCancelled) {
+          return
+        }
+
         applyAuthSnapshot(snapshot)
         setAuthMode(snapshot.user || snapshot.initialized ? 'sign_in' : 'request_access')
-        if (snapshot.user) {
-          if (snapshot.user.role === 'admin') {
-            handleNavigate('admin')
-            return attachedApi.admin.getSnapshot().then((admin) => {
-              setAdminSnapshot(admin)
-              setAdminError(null)
-            })
+
+        if (!snapshot.user) {
+          return
+        }
+
+        if (snapshot.user.role === 'admin') {
+          handleNavigate('admin')
+          const nextAdminSnapshot = await attachedApi.admin.getSnapshot()
+
+          if (isCancelled) {
+            return
           }
 
-          return attachedApi.dashboard.getSnapshot().then((dashboard) => {
-            setDashboardSnapshot(dashboard)
-            setDashboardError(null)
-          })
+          setAdminSnapshot(nextAdminSnapshot)
+          setAdminError(null)
+          return
         }
-        return undefined
-      })
-      .catch((error) => {
-        setAuthError(formatAppError(error, 'Gagal membuka workspace.'))
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [applyAuthSnapshot])
+
+        const nextDashboardSnapshot = await attachedApi.dashboard.getSnapshot()
+
+        if (isCancelled) {
+          return
+        }
+
+        setDashboardSnapshot(nextDashboardSnapshot)
+        setDashboardError(null)
+      } catch (error) {
+        if (!isCancelled) {
+          setAuthError(formatAppError(error, 'Gagal membuka workspace.'))
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadInitialState()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [applyAuthSnapshot, handleNavigate])
 
   useEffect(() => {
     if (!authSnapshot?.user) {
       return
     }
+
     const syncViewFromHash = (): void => {
       const parsedView = parseAuthenticatedView(window.location.hash)
+
       if (
         authSnapshot.user?.role === 'admin' &&
         (parsedView === 'dashboard' || parsedView === 'assessment')
@@ -362,11 +249,13 @@ function App(): React.JSX.Element {
         setView('admin')
         return
       }
+
       setView(parsedView)
     }
 
     syncViewFromHash()
     window.addEventListener('hashchange', syncViewFromHash)
+
     return () => window.removeEventListener('hashchange', syncViewFromHash)
   }, [authSnapshot?.user])
 
@@ -382,6 +271,7 @@ function App(): React.JSX.Element {
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
+
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsubmittedAccessRequest])
 
@@ -405,11 +295,6 @@ function App(): React.JSX.Element {
       return mergeSessionIntoDashboard(current, currentAssessmentSession)
     })
   }, [assessment.state.session])
-
-  const handleNavigate = (nextView: AuthenticatedView): void => {
-    navigateToView(nextView)
-    setView(nextView)
-  }
 
   const handleAuthModeChange = (value: AuthFormMode): boolean => {
     if (value === authMode) {
@@ -444,134 +329,128 @@ function App(): React.JSX.Element {
     }))
   }
 
-  const handleSignIn = (): void => {
+  const handleSignIn = async (): Promise<void> => {
     setAuthPending(true)
     setAuthError(null)
     setAuthNotice(null)
 
-    void attachedApi.auth
-      .signIn({ username: email, password })
-      .then(async (snapshot): Promise<SignInFollowup> => {
-        applyAuthSnapshot(snapshot)
-        setPassword('')
-        setAuthMode('sign_in')
-        setRegistration(createEmptyRegistration())
-        if (snapshot.user?.role === 'admin') {
-          return {
-            kind: 'admin',
-            snapshot: await attachedApi.admin.getSnapshot()
-          }
-        }
-        return {
-          kind: 'dashboard',
-          snapshot: await attachedApi.dashboard.getSnapshot()
-        }
-      })
-      .then((result) => {
-        if (result.kind === 'admin') {
-          setAdminSnapshot(result.snapshot)
-          setDashboardSnapshot(null)
-          handleNavigate('admin')
-          return
-        }
+    try {
+      const snapshot = await attachedApi.auth.signIn({ username: email, password })
 
-        setDashboardSnapshot(result.snapshot)
-        setAdminSnapshot(null)
-        handleNavigate('dashboard')
-      })
-      .catch((error) => {
-        setAuthError(formatAppError(error, 'Gagal masuk.'))
-      })
-      .finally(() => {
-        setAuthPending(false)
-      })
-  }
-
-  const handleSubmitAccessRequest = (): void => {
-    setAuthPending(true)
-    setAuthError(null)
-    setAuthNotice(null)
-
-    void attachedApi.auth
-      .submitAccessRequest({ username: email, password, registration })
-      .then((result) => {
-        applyAuthSnapshot(result.snapshot)
-        setPassword('')
-        setAuthMode('sign_in')
-        if (result.status !== 'verified') {
-          setAuthNotice({
-            tone: result.status === 'rejected' ? 'warning' : 'info',
-            title:
-              result.status === 'rejected' ? 'Permintaan akses ditolak' : 'Permintaan terkirim',
-            message: result.message
-          })
-        }
-      })
-      .catch((error) => {
-        setAuthError(formatAppError(error, 'Gagal mengirim permintaan akses.'))
-      })
-      .finally(() => {
-        setAuthPending(false)
-      })
-  }
-
-  const handleUpdateProfile = (input: UpdatePsychologistProfileInput): Promise<void> => {
-    return attachedApi.auth.updateProfile(input).then((snapshot) => {
       applyAuthSnapshot(snapshot)
-    })
-  }
+      setPassword('')
+      setAuthMode('sign_in')
+      setRegistration(createEmptyRegistration())
 
-  const handleUpdateEmail = (input: UpdateAccountEmailInput): Promise<void> => {
-    return attachedApi.auth.updateEmail(input).then((snapshot) => {
-      applyAuthSnapshot(snapshot)
-    })
-  }
+      const followup: SignInFollowup =
+        snapshot.user?.role === 'admin'
+          ? {
+              kind: 'admin',
+              snapshot: await attachedApi.admin.getSnapshot()
+            }
+          : {
+              kind: 'dashboard',
+              snapshot: await attachedApi.dashboard.getSnapshot()
+            }
 
-  const handleChangePassword = (input: ChangePasswordInput): Promise<void> => {
-    return attachedApi.auth.changePassword(input).then((snapshot) => {
-      applyAuthSnapshot(snapshot)
-    })
-  }
-
-  const handleSignOut = (): void => {
-    void attachedApi.auth
-      .signOut()
-      .then((snapshot) => {
-        applyAuthSnapshot(snapshot)
+      if (followup.kind === 'admin') {
+        setAdminSnapshot(followup.snapshot)
         setDashboardSnapshot(null)
-        setAdminSnapshot(null)
-        setPassword('')
-        setActiveSessionId(null)
-        setAssessmentPatientMode(null)
-        setAuthMode('sign_in')
-        setAuthNotice(null)
-        window.location.hash = ''
-        setView('dashboard')
-      })
-      .catch((error) => {
-        setAuthError(formatAppError(error, 'Gagal keluar.'))
-      })
+        handleNavigate('admin')
+        return
+      }
+
+      setDashboardSnapshot(followup.snapshot)
+      setAdminSnapshot(null)
+      handleNavigate('dashboard')
+    } catch (error) {
+      setAuthError(formatAppError(error, 'Gagal masuk.'))
+    } finally {
+      setAuthPending(false)
+    }
   }
 
-  const handleResetLocalData = (): Promise<void> => {
-    return attachedApi.auth.resetLocalData().then((snapshot) => {
+  const handleSubmitAccessRequest = async (): Promise<void> => {
+    setAuthPending(true)
+    setAuthError(null)
+    setAuthNotice(null)
+
+    try {
+      const result = await attachedApi.auth.submitAccessRequest({
+        username: email,
+        password,
+        registration
+      })
+
+      applyAuthSnapshot(result.snapshot)
+      setPassword('')
+      setAuthMode('sign_in')
+
+      if (result.status !== 'verified') {
+        setAuthNotice({
+          tone: result.status === 'rejected' ? 'warning' : 'info',
+          title: result.status === 'rejected' ? 'Permintaan akses ditolak' : 'Permintaan terkirim',
+          message: result.message
+        })
+      }
+    } catch (error) {
+      setAuthError(formatAppError(error, 'Gagal mengirim permintaan akses.'))
+    } finally {
+      setAuthPending(false)
+    }
+  }
+
+  const handleUpdateProfile = async (input: UpdatePsychologistProfileInput): Promise<void> => {
+    const snapshot = await attachedApi.auth.updateProfile(input)
+    applyAuthSnapshot(snapshot)
+  }
+
+  const handleUpdateEmail = async (input: UpdateAccountEmailInput): Promise<void> => {
+    const snapshot = await attachedApi.auth.updateEmail(input)
+    applyAuthSnapshot(snapshot)
+  }
+
+  const handleChangePassword = async (input: ChangePasswordInput): Promise<void> => {
+    const snapshot = await attachedApi.auth.changePassword(input)
+    applyAuthSnapshot(snapshot)
+  }
+
+  const handleSignOut = async (): Promise<void> => {
+    try {
+      const snapshot = await attachedApi.auth.signOut()
+
       applyAuthSnapshot(snapshot)
       setDashboardSnapshot(null)
       setAdminSnapshot(null)
-      setDashboardError(null)
-      setAdminError(null)
-      setActiveSessionId(null)
-      setAssessmentPatientMode(null)
       setPassword('')
-      setAuthMode(snapshot.initialized ? 'sign_in' : 'request_access')
-      setAuthNotice({
-        tone: 'info',
-        title: 'Data lokal dihapus',
-        message: 'Semua akun, sesi, dan artefak lokal pada workstation ini telah dibersihkan.'
-      })
+      clearAssessmentContext()
+      setAuthMode('sign_in')
+      setAuthNotice(null)
       window.location.hash = ''
       setView('dashboard')
+    } catch (error) {
+      setAuthError(formatAppError(error, 'Gagal keluar.'))
+    }
+  }
+
+  const handleResetLocalData = async (): Promise<void> => {
+    const snapshot = await attachedApi.auth.resetLocalData()
+
+    applyAuthSnapshot(snapshot)
+    setDashboardSnapshot(null)
+    setAdminSnapshot(null)
+    setDashboardError(null)
+    setAdminError(null)
+    clearAssessmentContext()
+    setPassword('')
+    setAuthMode(snapshot.initialized ? 'sign_in' : 'request_access')
+    setAuthNotice({
+      tone: 'info',
+      title: 'Data lokal dihapus',
+      message: 'Semua akun, sesi, dan artefak lokal pada workstation ini telah dibersihkan.'
     })
+    window.location.hash = ''
+    setView('dashboard')
   }
 
   const handleStartAssessment = (): void => {
@@ -592,50 +471,35 @@ function App(): React.JSX.Element {
     setStartAssessmentDialogOpen(true)
   }
 
-  const handleCreateNewAssessment = (): void => {
+  const createAssessment = async (
+    patientMode: Exclude<AssessmentPatientMode, null>
+  ): Promise<void> => {
     setStartAssessmentPending(true)
     setStartAssessmentError(null)
 
-    void attachedApi.sessions
-      .create()
-      .then((session) => {
-        setActiveSessionId(session.id)
-        setAssessmentPatientMode('new')
-        setStartAssessmentDialogOpen(false)
-        handleNavigate('assessment')
-        return refreshDashboard()
-      })
-      .catch((error) => {
-        setStartAssessmentError(
-          error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.'
-        )
-      })
-      .finally(() => {
-        setStartAssessmentPending(false)
-      })
+    try {
+      const session = await attachedApi.sessions.create()
+
+      setActiveSessionId(session.id)
+      setAssessmentPatientMode(patientMode)
+      setStartAssessmentDialogOpen(false)
+      handleNavigate('assessment')
+      await refreshDashboard()
+    } catch (error) {
+      setStartAssessmentError(
+        error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.'
+      )
+    } finally {
+      setStartAssessmentPending(false)
+    }
   }
 
-  const handleCreateExistingPatientAssessment = (): void => {
-    setStartAssessmentPending(true)
-    setStartAssessmentError(null)
+  const handleCreateNewAssessment = async (): Promise<void> => {
+    await createAssessment('new')
+  }
 
-    void attachedApi.sessions
-      .create()
-      .then((session) => {
-        setActiveSessionId(session.id)
-        setAssessmentPatientMode('existing')
-        setStartAssessmentDialogOpen(false)
-        handleNavigate('assessment')
-        return refreshDashboard()
-      })
-      .catch((error) => {
-        setStartAssessmentError(
-          error instanceof Error ? error.message : 'Gagal membuat sesi asesmen.'
-        )
-      })
-      .finally(() => {
-        setStartAssessmentPending(false)
-      })
+  const handleCreateExistingPatientAssessment = async (): Promise<void> => {
+    await createAssessment('existing')
   }
 
   const handleOpenSession = (sessionId: string): void => {
@@ -647,13 +511,14 @@ function App(): React.JSX.Element {
   const handleAbortSession = useCallback(
     async (sessionId: string): Promise<void> => {
       await attachedApi.sessions.abort(sessionId)
+
       if (activeSessionId === sessionId) {
-        setActiveSessionId(null)
-        setAssessmentPatientMode(null)
+        clearAssessmentContext()
       }
+
       await refreshDashboard()
     },
-    [activeSessionId, refreshDashboard]
+    [activeSessionId, clearAssessmentContext, refreshDashboard]
   )
 
   const handleDeleteSessionRecordings = useCallback(
@@ -675,22 +540,31 @@ function App(): React.JSX.Element {
     [refreshDashboard]
   )
 
-  const handleReviewAccessRequest = (input: ReviewAccessRequestInput): void => {
+  const handleReviewAccessRequest = async (input: ReviewAccessRequestInput): Promise<void> => {
     setAdminPending(true)
     setAdminError(null)
 
-    void attachedApi.admin
-      .reviewAccessRequest(input)
-      .then((snapshot) => {
-        setAdminSnapshot(snapshot)
-      })
-      .catch((error) => {
-        setAdminError(error instanceof Error ? error.message : 'Gagal memperbarui status akses.')
-      })
-      .finally(() => {
-        setAdminPending(false)
-      })
+    try {
+      const snapshot = await attachedApi.admin.reviewAccessRequest(input)
+      setAdminSnapshot(snapshot)
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Gagal memperbarui status akses.')
+    } finally {
+      setAdminPending(false)
+    }
   }
+
+  const handleAssessmentExit = (): void => {
+    if (assessment.state.session && !isActiveSessionState(assessment.state.session.state)) {
+      clearAssessmentContext()
+    }
+
+    handleNavigate('dashboard')
+    void refreshDashboard()
+  }
+
+  const isDevelopmentModeEnabled =
+    authSnapshot?.remoteAuth.debugAutoApprovalEnabled ?? defaultRemoteAuth.debugAutoApprovalEnabled
 
   if (loading) {
     return <main className="min-h-screen bg-background" />
@@ -705,13 +579,7 @@ function App(): React.JSX.Element {
           registration={registration}
           authMode={authMode}
           knownUser={authSnapshot?.knownUser ?? null}
-          remoteAuth={
-            authSnapshot?.remoteAuth ?? {
-              requestAccessEnabled: false,
-              approvalSyncEnabled: false,
-              debugAutoApprovalEnabled: false
-            }
-          }
+          remoteAuth={authSnapshot?.remoteAuth ?? defaultRemoteAuth}
           onAuthModeChange={handleAuthModeChange}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
@@ -719,14 +587,14 @@ function App(): React.JSX.Element {
             setRegistration((current) => ({ ...current, [field]: value }))
           }
           onRegistrationDocumentChange={handleRegistrationDocumentChange}
-          onSignIn={handleSignIn}
-          onSubmitAccessRequest={handleSubmitAccessRequest}
+          onSignIn={() => void handleSignIn()}
+          onSubmitAccessRequest={() => void handleSubmitAccessRequest()}
           coverImageUrl={coverImageUrl}
           notice={authNotice}
           error={authError}
           isSubmitting={authPending}
         />
-        {authSnapshot?.remoteAuth.debugAutoApprovalEnabled ? <DevModeMarker /> : null}
+        {isDevelopmentModeEnabled ? <DevModeMarker /> : null}
       </>
     )
   }
@@ -739,16 +607,9 @@ function App(): React.JSX.Element {
           modelRuntimeReady={dashboardSnapshot?.modelRuntimeReady}
           patientMode={assessmentPatientMode}
           existingPatientOptions={patientChoices}
-          onExitAssessment={() => {
-            if (assessment.state.session && !isActiveSessionState(assessment.state.session.state)) {
-              setActiveSessionId(null)
-              setAssessmentPatientMode(null)
-            }
-            handleNavigate('dashboard')
-            void refreshDashboard()
-          }}
+          onExitAssessment={handleAssessmentExit}
         />
-        {authSnapshot.remoteAuth.debugAutoApprovalEnabled ? <DevModeMarker /> : null}
+        {isDevelopmentModeEnabled ? <DevModeMarker /> : null}
       </main>
     )
   }
@@ -760,7 +621,7 @@ function App(): React.JSX.Element {
         onNavigate={handleNavigate}
         onStartAssessment={handleStartAssessment}
         startAssessmentDisabled={startAssessmentDisabled}
-        onSignOut={handleSignOut}
+        onSignOut={() => void handleSignOut()}
         userRole={authSnapshot.user.role}
         showUser={false}
         userName={authSnapshot.user.fullName}
@@ -782,7 +643,7 @@ function App(): React.JSX.Element {
             isLoading={adminPending}
             error={adminError}
             onReviewAccessRequest={(userId, decision) =>
-              handleReviewAccessRequest({ userId, decision })
+              void handleReviewAccessRequest({ userId, decision })
             }
           />
         )}
@@ -803,131 +664,11 @@ function App(): React.JSX.Element {
         isSubmitting={startAssessmentPending}
         error={startAssessmentError}
         onOpenChange={setStartAssessmentDialogOpen}
-        onCreateNew={handleCreateNewAssessment}
-        onSelectExisting={handleCreateExistingPatientAssessment}
+        onCreateNew={() => void handleCreateNewAssessment()}
+        onSelectExisting={() => void handleCreateExistingPatientAssessment()}
       />
-      {authSnapshot.remoteAuth.debugAutoApprovalEnabled ? <DevModeMarker /> : null}
+      {isDevelopmentModeEnabled ? <DevModeMarker /> : null}
     </main>
-  )
-}
-
-function StartAssessmentDialog({
-  open,
-  hasExistingPatients,
-  isSubmitting,
-  error,
-  onOpenChange,
-  onCreateNew,
-  onSelectExisting
-}: {
-  open: boolean
-  hasExistingPatients: boolean
-  isSubmitting: boolean
-  error: string | null
-  onOpenChange: (open: boolean) => void
-  onCreateNew: () => void
-  onSelectExisting: () => void
-}): React.JSX.Element {
-  const [selectedMode, setSelectedMode] = useState<'new' | 'existing' | null>(null)
-
-  const handleOpenChange = (nextOpen: boolean): void => {
-    if (!nextOpen) {
-      setSelectedMode(null)
-    }
-    onOpenChange(nextOpen)
-  }
-
-  const submitSelection = (): void => {
-    if (selectedMode === 'new') {
-      setSelectedMode(null)
-      onCreateNew()
-      return
-    }
-
-    if (selectedMode === 'existing') {
-      setSelectedMode(null)
-      onSelectExisting()
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[86vh] overflow-y-auto rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl tracking-[-0.04em]">Mulai asesmen</DialogTitle>
-          <DialogDescription className="text-base leading-7">
-            Pilih jenis pasien untuk menentukan tampilan langkah pertama asesmen.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4">
-          {error ? (
-            <StatusNotice tone="error" title="Asesmen gagal dibuat">
-              {error}
-            </StatusNotice>
-          ) : null}
-
-          <label className="flex cursor-pointer items-start gap-4 rounded-[22px] border border-border/70 bg-background/70 p-5 transition hover:border-primary/30 hover:bg-muted/35">
-            <input
-              type="radio"
-              name="assessment-patient-mode"
-              className="mt-1 size-5 accent-primary"
-              checked={selectedMode === 'new'}
-              disabled={isSubmitting}
-              onChange={() => setSelectedMode('new')}
-            />
-            <div>
-              <p className="font-medium text-foreground">Pasien baru</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Langkah pertama menampilkan form identitas peserta seperti biasa.
-              </p>
-            </div>
-          </label>
-
-          <label className="flex cursor-pointer items-start gap-4 rounded-[22px] border border-border/70 bg-background/70 p-5 transition hover:border-primary/30 hover:bg-muted/35">
-            <input
-              type="radio"
-              name="assessment-patient-mode"
-              className="mt-1 size-5 accent-primary"
-              checked={selectedMode === 'existing'}
-              disabled={isSubmitting || !hasExistingPatients}
-              onChange={() => setSelectedMode('existing')}
-            />
-            <div>
-              <p className="font-medium text-foreground">Pasien terdaftar</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Langkah pertama diganti menjadi pencarian dan pemilihan pasien.
-              </p>
-              {!hasExistingPatients ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Belum ada pasien lama yang bisa dipilih.
-                </p>
-              ) : null}
-            </div>
-          </label>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-xl bg-card"
-            disabled={isSubmitting}
-            onClick={() => handleOpenChange(false)}
-          >
-            Batal
-          </Button>
-          <Button
-            type="button"
-            className="rounded-xl"
-            disabled={isSubmitting || selectedMode === null}
-            onClick={submitSelection}
-          >
-            {isSubmitting ? 'Membuat...' : 'Pilih'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 
