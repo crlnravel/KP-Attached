@@ -1,88 +1,130 @@
-# web
+# ATTACHED
 
-An Electron application with React and TypeScript
+<p align="center">
+  <img src="./docs/images/dashboard.png" alt="ATTACHED psychologist dashboard" width="900">
+</p>
 
-## Recommended IDE Setup
+ATTACHED is an Electron desktop application that helps psychologists conduct attachment-style assessments using a local multimodal AI pipeline.
 
-- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+It exists to provide a structured, local-first clinical workflow around participant intake, consent, media capture, questionnaire completion, AI inference, and clinician review without depending on a hosted patient-data backend.
 
-## Project Setup
+> Local-first. Privacy-focused. AI-assisted clinical assessment.
+
+Most of the current UI copy is written in Indonesian.
+
+## What it does
+
+ATTACHED combines a desktop UI, a local SQLite-backed backend, and a bundled Python runtime to support:
+
+- psychologist onboarding and admin approval
+- guided assessment sessions with participant identity and consent
+- 14-step stimulus exposure and response capture
+- a built-in 36-item ECR-RS questionnaire
+- local AI inference for `secure` / `insecure` classification
+- clinician review, correction, and audit-report generation
+
+## Features
+
+- Local multimodal attachment-style assessment
+- Local-first storage and on-device inference
+- Separate Admin and Psychologist roles
+- Guided recording workflow for session capture
+- Built-in ECR-RS questionnaire
+- Confidence scores, probabilities, and clinician feedback
+- Automatic audit and training-report export
+- Optional remote approval sync for psychologist onboarding
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U["Psychologist / Admin"] --> R["Renderer (React)"]
+  R --> P["Preload IPC bridge"]
+  P --> M["Electron main process"]
+  M --> DB["SQLite local database"]
+  M --> FS["Local session files and reports"]
+  M --> PY["Bundled Python model runtime (data_model_KP)"]
+  M -. optional .-> RA["Remote approval service"]
+```
+
+## Tech Stack
+
+- Electron 39
+- React 19 + TypeScript
+- electron-vite + Vite
+- Tailwind CSS 4
+- Radix UI primitives
+- SQLite via `node:sqlite`
+- Python model runtime in `../data_model_KP`
+
+## Getting Started
+
+### Requirements
+
+- Node.js 22+
+- `pnpm`
+- a local `data_model_KP` runtime next to this project, or `ATTACHED_MODEL_ROOT`
+- camera and microphone access on the host machine
 
 ### Install
 
 ```bash
-$ pnpm install
+pnpm install
 ```
 
-### Development
+### Run in development
 
 ```bash
-$ pnpm dev
+pnpm dev
 ```
 
 ### Build
 
 ```bash
-# For windows
-$ pnpm build:win
-
-# For macOS
-$ pnpm build:mac
-
-# For Linux
-$ pnpm build:linux
-```
-
-## Local Model Runtime
-
-The app runs the ATTACHED model locally from `../data_model_KP`. During packaging,
-`electron-builder.yml` copies that folder into the release resources as
-`data_model_KP`, together with the cross-platform launcher in
-`resources/model-launchers`.
-
-Windows releases require Windows-compatible Python environments inside the model
-bundle:
-
-- `data_model_KP/run_model/.venv/Scripts/python.exe`
-- `data_model_KP/run_model/.venv-mmaction-modern/Scripts/python.exe`
-
-The launcher used on Windows is:
-
-```powershell
-python resources/model-launchers/run_raw_pipeline_cross_platform.py
-```
-
-It reads the same environment variables used by the Electron backend:
-`EXPOSURE_INPUT_DIR`, `VIDEO_INPUT_DIR`, `AUDIO_SOURCE_DIR`, `QUIZ_CSV`,
-`OUTPUT_ROOT`, and `ATTACHMENT_EXPERIMENT`.
-
-To build a Windows installer from Windows:
-
-```powershell
-pnpm install
+pnpm build
 pnpm build:win
+pnpm build:mac
+pnpm build:linux
 ```
 
-If the model bundle is stored outside the default layout, set
-`ATTACHED_MODEL_ROOT` to the absolute `data_model_KP` path before launching the
-app.
+### Optional app config
 
-## Local Sample Data
+Copy `.env.example` to `.env` if you want to configure remote approval endpoints or change debug behavior.
 
-In development mode, the test-data shortcut will use the local Nabila fixture
-when available. By default the app looks for:
+## Project Structure
 
 ```text
-../Nabila Dhiya Permatasari
+src/
+|-- main/          Electron backend, SQLite, filesystem, model execution
+|-- preload/       IPC bridge exposed to the renderer
+|-- renderer/      React application and UI
+`-- shared/        Shared contracts, constants, and IPC channels
+
+resources/         Static assets and bundled launcher helpers
+docs/              Detailed technical and operational documentation
+scripts/           Helper scripts, including Electron smoke testing
 ```
 
-You can override that location with:
+Related external dependency:
 
-```powershell
-$env:ATTACHED_SAMPLE_DATA_DIR="D:\ATTACHED\samples\Nabila Dhiya Permatasari"
+```text
+../data_model_KP
 ```
 
-The fixture is copied into the active session folder using the same raw media
-layout as a real assessment. The app reads the 36 ECR-RS answers directly from
-`Hasil Kuesioner Nabila.xlsx`. The raw participant media is not bundled into
-release builds by default.
+This sibling directory contains the Python runtime that ATTACHED uses for local inference.
+
+## Documentation
+
+- [Architecture](./docs/architecture.md)
+- [Development Guide](./docs/development.md)
+- [Environment Variables](./docs/environment.md)
+- [Authentication and Approval Flow](./docs/authentication.md)
+- [Runtime Contract](./docs/runtime.md)
+- [Storage Layout](./docs/storage.md)
+- [Privacy and Retention](./docs/privacy.md)
+- [Demo Flow](./docs/demo-flow.md)
+
+## Notes
+
+- Only one active assessment session is allowed on a workstation at a time.
+- The package and folder names still use the generic name `web`, but the product implemented here is ATTACHED.
