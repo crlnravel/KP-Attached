@@ -7,7 +7,7 @@ This document describes the contract between the Electron app and the external P
 By default, ATTACHED expects the model bundle to exist at:
 
 ```text
-../attached-inference-runtime
+attached-inference-runtime
 ```
 
 You can override discovery with:
@@ -28,8 +28,9 @@ If no valid runtime is found:
 - inference is blocked
 - the UI warns that the local analysis runtime is not ready
 
-The distributed bundle is named `attached-inference-runtime.zip`. Extract it as
-`attached-inference-runtime/` beside the project, or set `ATTACHED_MODEL_ROOT` to its extracted directory.
+The distributed bundle is named `attached-inference-runtime.zip`. The checked-in
+setup helper extracts it as `attached-inference-runtime/` in the project root, or
+you can set `ATTACHED_MODEL_ROOT` to another extracted directory.
 
 The bundle contains only the runtime code, selected model checkpoints/configurations, and requirement files. Its
 Python virtual environments are created separately during deployment.

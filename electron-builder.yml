@@ -14,7 +14,7 @@ asarUnpack:
 extraResources:
   - from: resources/model-launchers
     to: model-launchers
-  - from: ../attached-inference-runtime
+  - from: attached-inference-runtime
     to: attached-inference-runtime
     filter:
       - 'attachment_classifier/attachment_binary.py'

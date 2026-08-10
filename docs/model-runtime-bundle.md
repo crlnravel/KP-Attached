@@ -12,7 +12,7 @@ After extraction, the directory should be named:
 attached-inference-runtime/
 ```
 
-Place it beside the web project for automatic discovery, or point `ATTACHED_MODEL_ROOT` at the extracted directory.
+Keep it at the project root for automatic discovery, or point `ATTACHED_MODEL_ROOT` at the extracted directory.
 
 ## Included files
 
@@ -35,7 +35,7 @@ The archive does not include Python virtual environments, package caches, raw me
 
 ## Deployment handoff
 
-The archive is available at `https://object.carlravel.tech/attached-inference-runtime.zip`. The root-level `setup-attached-inference-runtime.sh` script downloads it, verifies its SHA-256, extracts it, and creates the platform-specific Python environments from the bundled requirement files.
+The archive is available at `https://object.carlravel.tech/attached-inference-runtime.zip`. The checked-in root-level `setup-attached-inference-runtime.sh` script downloads it, verifies its SHA-256, extracts it, and creates the platform-specific Python environments from the bundled requirement files.
 
 The archive currently verifies as `1,763,924,217` bytes with SHA-256:
 
@@ -57,7 +57,7 @@ Use `--skip-download` when the verified archive is already present, or `--skip-i
 
 ## Upload helper
 
-The project root contains `upload-attached-inference-runtime.sh`. It uploads the archive through the R2 S3 API. The helper prefers AWS CLI multipart upload for large files and falls back to a signed `curl` `PutObject` request when AWS CLI is unavailable.
+The original workspace also contains `upload-attached-inference-runtime.sh` for maintainers who need to publish a new archive through the R2 S3 API. It is outside this repository and is not required when setting up a clone.
 
 Set credentials in the shell rather than placing them in source files. If you run
 the helper interactively, it prompts for any missing required values and hides the
@@ -69,6 +69,7 @@ export R2_BUCKET='<bucket-name>'
 export R2_ACCESS_KEY_ID='<r2-access-key-id>'
 export R2_SECRET_ACCESS_KEY='<r2-secret-access-key>'
 
+cd ..
 ./upload-attached-inference-runtime.sh
 ```
 

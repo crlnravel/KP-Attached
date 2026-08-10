@@ -5,13 +5,14 @@
 - Node.js 22+
 - `pnpm`
 - Electron-compatible build tooling for your platform
-- the local Python runtime bundle at `../attached-inference-runtime`, unless you set `ATTACHED_MODEL_ROOT`
+- the local Python runtime bundle at `attached-inference-runtime`, unless you set `ATTACHED_MODEL_ROOT`
 
-The backend uses `node:sqlite`, Electron 39, and a sibling Python runtime, so a current Node 22+ environment is the safest setup.
+The backend uses `node:sqlite`, Electron 39, and the checked-in runtime setup helper, so a current Node 22+ environment is the safest setup.
 
 ## Install
 
 ```bash
+./setup-attached-inference-runtime.sh
 pnpm install
 ```
 

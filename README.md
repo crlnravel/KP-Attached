@@ -55,7 +55,7 @@ flowchart LR
 - Tailwind CSS 4
 - Radix UI primitives
 - SQLite via `node:sqlite`
-- Python model runtime in `../attached-inference-runtime`
+- Python model runtime in `attached-inference-runtime`
 
 ## Getting Started
 
@@ -63,12 +63,14 @@ flowchart LR
 
 - Node.js 22+
 - `pnpm`
-- a local `attached-inference-runtime` bundle next to this project, or `ATTACHED_MODEL_ROOT`
+- a local `attached-inference-runtime` bundle at the project root, or `ATTACHED_MODEL_ROOT`
+- `curl` and `unzip`
 - camera and microphone access on the host machine
 
 ### Install
 
 ```bash
+./setup-attached-inference-runtime.sh
 pnpm install
 ```
 
@@ -105,13 +107,13 @@ docs/              Detailed technical and operational documentation
 scripts/           Helper scripts, including Electron smoke testing
 ```
 
-Related external dependency:
+Runtime dependency:
 
 ```text
-../attached-inference-runtime
+attached-inference-runtime
 ```
 
-This sibling directory contains the Python runtime and model assets that ATTACHED uses for local inference.
+The setup helper downloads and prepares this directory from the published runtime archive.
 
 ## Documentation
 

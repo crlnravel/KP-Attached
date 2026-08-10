@@ -2,6 +2,9 @@ node_modules
 dist
 out
 artifacts
+attached-inference-runtime/
+attached-inference-runtime.zip
+attached-inference-runtime.zip.part
 .env
 *.tsbuildinfo
 __pycache__
