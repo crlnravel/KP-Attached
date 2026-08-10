@@ -200,6 +200,7 @@ export function AssessmentView({
 
       {state.step === 'result' && (
         <ResultStage
+          key={state.session?.id ?? 'result'}
           result={state.result}
           postAssessmentNote={state.postAssessmentNote}
           postAssessmentNoteUpdatedAt={state.postAssessmentNoteUpdatedAt}
@@ -638,12 +639,11 @@ function RecordingStage({
   onStartExposure: () => Promise<void>
   onStopExposure: () => void
   onStartResponse: () => Promise<void>
-  onStopResponse: () => void
+  onStopResponse: (onComplete?: () => void) => void
   onContinueToQuestionnaire: () => void
 }): React.JSX.Element {
   const autoExposureSlotRef = useRef<string | null>(null)
   const autoResponseSlotRef = useRef<string | null>(null)
-  const continueAfterResponseRef = useRef(false)
   const exposureTimeoutRef = useRef<number | null>(null)
   const [confirmedExposureSlotKey, setConfirmedExposureSlotKey] = useState<string | null>(null)
   const [stimulusImageState, setStimulusImageState] = useState<{
@@ -692,7 +692,6 @@ function RecordingStage({
     }
     autoExposureSlotRef.current = null
     autoResponseSlotRef.current = null
-    continueAfterResponseRef.current = false
   }, [slotKey])
 
   useEffect(() => {
@@ -711,10 +710,15 @@ function RecordingStage({
 
     autoExposureSlotRef.current = slotKey
 
+    let cancelled = false
+
     void (async () => {
       try {
         setPlaybackIssue(null)
         await onStartExposure()
+        if (cancelled) {
+          return
+        }
         exposureTimeoutRef.current = window.setTimeout(() => {
           exposureTimeoutRef.current = null
           if (autoExposureSlotRef.current === slotKey) {
@@ -722,6 +726,9 @@ function RecordingStage({
           }
         }, STIMULUS_EXPOSURE_DURATION_MS)
       } catch (error) {
+        if (cancelled) {
+          return
+        }
         autoExposureSlotRef.current = null
         setConfirmedExposureSlotKey(null)
         if (exposureTimeoutRef.current !== null) {
@@ -734,6 +741,13 @@ function RecordingStage({
         })
       }
     })()
+    return () => {
+      cancelled = true
+      if (exposureTimeoutRef.current !== null) {
+        window.clearTimeout(exposureTimeoutRef.current)
+        exposureTimeoutRef.current = null
+      }
+    }
   }, [
     capturePhase,
     confirmedExposureSlotKey,
@@ -786,12 +800,17 @@ function RecordingStage({
 
     autoResponseSlotRef.current = slotKey
 
+    let cancelled = false
+
     void (async () => {
       setPlaybackIssue(null)
 
       try {
         await onStartResponse()
       } catch (error) {
+        if (cancelled) {
+          return
+        }
         autoResponseSlotRef.current = null
         setPlaybackIssue({
           slotKey,
@@ -799,6 +818,9 @@ function RecordingStage({
         })
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [
     capturePhase,
     currentCaptureStatus?.audio,
@@ -833,28 +855,13 @@ function RecordingStage({
     onContinueToQuestionnaire()
   }, [onContinueToQuestionnaire, onSelectSlot, state.captures, state.currentSlotIndex])
 
-  useEffect(() => {
-    if (!continueAfterResponseRef.current || state.recordingMode !== null || state.saving) {
-      return
-    }
-
-    if (capturePhase === 'complete') {
-      continueAfterResponseRef.current = false
-      handleContinue()
-      return
-    }
-
-    continueAfterResponseRef.current = false
-  }, [capturePhase, handleContinue, state.recordingMode, state.saving])
-
   const handleResponseContinue = (): void => {
     if (state.saving) {
       return
     }
 
     if (capturePhase === 'response' && state.recordingMode === 'response') {
-      continueAfterResponseRef.current = true
-      onStopResponse()
+      onStopResponse(handleContinue)
       return
     }
 
@@ -863,6 +870,64 @@ function RecordingStage({
     }
   }
 
+  const handleStimulusError = useCallback((): void => {
+    autoExposureSlotRef.current = null
+    if (exposureTimeoutRef.current !== null) {
+      window.clearTimeout(exposureTimeoutRef.current)
+      exposureTimeoutRef.current = null
+    }
+    setConfirmedExposureSlotKey(null)
+    setPlaybackIssue({
+      slotKey,
+      message: 'Gambar stimulus tidak dapat dimuat di perangkat ini.'
+    })
+  }, [slotKey])
+
+  return (
+    <RecordingStageLayout
+      state={state}
+      previewVideoRef={previewVideoRef}
+      stimulus={stimulus}
+      capturePhase={capturePhase}
+      isLightMode={isLightMode}
+      showExposurePlayback={showExposurePlayback}
+      awaitingExposureConfirmation={awaitingExposureConfirmation}
+      showExposureErrorState={showExposureErrorState}
+      inlineMessages={inlineMessages}
+      onPrepareStimulusExposure={prepareStimulusExposure}
+      onResponseContinue={handleResponseContinue}
+      onStimulusError={handleStimulusError}
+    />
+  )
+}
+
+function RecordingStageLayout({
+  state,
+  previewVideoRef,
+  stimulus,
+  capturePhase,
+  isLightMode,
+  showExposurePlayback,
+  awaitingExposureConfirmation,
+  showExposureErrorState,
+  inlineMessages,
+  onPrepareStimulusExposure,
+  onResponseContinue,
+  onStimulusError
+}: {
+  state: AssessmentController['state']
+  previewVideoRef: AssessmentController['previewVideoRef']
+  stimulus: { label: string; imageUrl: string }
+  capturePhase: 'exposure' | 'response' | 'complete'
+  isLightMode: boolean
+  showExposurePlayback: boolean
+  awaitingExposureConfirmation: boolean
+  showExposureErrorState: boolean
+  inlineMessages: string[]
+  onPrepareStimulusExposure: () => void
+  onResponseContinue: () => void
+  onStimulusError: () => void
+}): React.JSX.Element {
   return (
     <div
       className={
@@ -876,18 +941,7 @@ function RecordingStage({
           src={stimulus.imageUrl}
           alt={stimulus.label}
           className="absolute inset-0 size-full object-contain bg-black"
-          onError={() => {
-            autoExposureSlotRef.current = null
-            if (exposureTimeoutRef.current !== null) {
-              window.clearTimeout(exposureTimeoutRef.current)
-              exposureTimeoutRef.current = null
-            }
-            setConfirmedExposureSlotKey(null)
-            setPlaybackIssue({
-              slotKey,
-              message: 'Gambar stimulus tidak dapat dimuat di perangkat ini.'
-            })
-          }}
+          onError={onStimulusError}
         />
       )}
       <video
@@ -898,11 +952,7 @@ function RecordingStage({
         className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
       />
       {capturePhase !== 'exposure' && <div className="assessment-warm-backdrop absolute inset-0" />}
-      {capturePhase !== 'exposure' && (
-        <>
-          <div className="assessment-warm-glow absolute inset-0" />
-        </>
-      )}
+      {capturePhase !== 'exposure' && <div className="assessment-warm-glow absolute inset-0" />}
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8">
         {capturePhase !== 'exposure' && (
@@ -931,7 +981,7 @@ function RecordingStage({
                 type="button"
                 className="rounded-xl"
                 disabled={!state.videoReady || state.saving}
-                onClick={prepareStimulusExposure}
+                onClick={onPrepareStimulusExposure}
               >
                 {state.videoReady ? 'Lanjut' : 'Menyiapkan...'}
               </Button>
@@ -956,7 +1006,7 @@ function RecordingStage({
                 type="button"
                 className="rounded-xl"
                 disabled={!state.videoReady || state.saving}
-                onClick={prepareStimulusExposure}
+                onClick={onPrepareStimulusExposure}
               >
                 {state.videoReady ? 'Coba lagi' : 'Menyiapkan...'}
               </Button>
@@ -989,7 +1039,7 @@ function RecordingStage({
                 type="button"
                 className="rounded-xl"
                 disabled={state.saving || state.recordingMode !== 'response'}
-                onClick={handleResponseContinue}
+                onClick={onResponseContinue}
               >
                 {state.saving ? 'Menyimpan...' : 'Lanjut'}
               </Button>
@@ -998,7 +1048,7 @@ function RecordingStage({
 
           {capturePhase === 'complete' && (
             <div className="flex w-full justify-center">
-              <Button type="button" className="rounded-xl" onClick={handleResponseContinue}>
+              <Button type="button" className="rounded-xl" onClick={onResponseContinue}>
                 Lanjut
               </Button>
             </div>
@@ -1203,6 +1253,11 @@ function RunningStage({ state }: { state: AssessmentController['state'] }): Reac
   )
 }
 
+type PendingFeedback = {
+  verdict: 'correct' | 'incorrect'
+  correctedLabel: 'secure' | 'insecure' | null
+}
+
 function ResultStage({
   result,
   postAssessmentNote,
@@ -1225,12 +1280,9 @@ function ResultStage({
   onWipeSession: () => void
   onExitAssessment: () => void
 }): React.JSX.Element {
-  const [pendingFeedback, setPendingFeedback] = useState<{
-    verdict: 'correct' | 'incorrect'
-    correctedLabel: 'secure' | 'insecure' | null
-  } | null>(null)
+  const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(null)
   const [wipeDialogOpen, setWipeDialogOpen] = useState(false)
-  const [noteDraft, setNoteDraft] = useState(postAssessmentNote)
+  const [noteDraft, setNoteDraft] = useState(() => postAssessmentNote)
   const classification = result ? (result.label === 'secure' ? 'Secure' : 'Insecure') : null
   const oppositeLabel =
     result?.label === 'secure' ? 'insecure' : result?.label === 'insecure' ? 'secure' : null
@@ -1238,10 +1290,6 @@ function ResultStage({
     oppositeLabel === 'secure' ? 'Secure' : oppositeLabel === 'insecure' ? 'Insecure' : null
   const isSecure = result?.label === 'secure'
   const noteDirty = noteDraft !== postAssessmentNote
-
-  useEffect(() => {
-    setNoteDraft(postAssessmentNote)
-  }, [postAssessmentNote])
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl flex-col gap-8">
@@ -1251,6 +1299,147 @@ function ResultStage({
         description="Terima kasih telah menyelesaikan sesi asesmen. Berikut adalah ringkasan hasil Anda."
       />
 
+      <ResultSummary
+        result={result}
+        classification={classification}
+        isSecure={isSecure}
+        oppositeLabel={oppositeLabel}
+        oppositeClassification={oppositeClassification}
+        saving={saving}
+        postAssessmentNoteUpdatedAt={postAssessmentNoteUpdatedAt}
+        noteDraft={noteDraft}
+        setNoteDraft={setNoteDraft}
+        noteDirty={noteDirty}
+        setPendingFeedback={setPendingFeedback}
+        onSavePostAssessmentNote={onSavePostAssessmentNote}
+      />
+
+      <Dialog
+        open={Boolean(pendingFeedback)}
+        onOpenChange={(open) => {
+          if (!open) setPendingFeedback(null)
+        }}
+      >
+        <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl tracking-[-0.04em]">Ubah hasil asesmen?</DialogTitle>
+            <DialogDescription className="text-base leading-7">
+              {pendingFeedback?.verdict === 'correct'
+                ? `Hasil akan ditandai sesuai sebagai ${classification}.`
+                : `Hasil akan ditandai tidak sesuai dan dikoreksi menjadi ${
+                    pendingFeedback?.correctedLabel === 'secure' ? 'Secure' : 'Insecure'
+                  }.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl bg-card"
+              disabled={saving}
+              onClick={() => setPendingFeedback(null)}
+            >
+              Kembali
+            </Button>
+            <Button
+              type="button"
+              className="rounded-xl"
+              disabled={saving || !pendingFeedback}
+              onClick={() => {
+                if (!pendingFeedback) return
+                onSubmitFeedback(pendingFeedback.verdict, pendingFeedback.correctedLabel)
+                setPendingFeedback(null)
+              }}
+            >
+              {saving ? 'Menyimpan...' : 'Ubah hasil'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex items-center justify-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 rounded-xl bg-card px-5"
+          onClick={() => setWipeDialogOpen(true)}
+        >
+          <Trash2Icon className="size-4" />
+          Hapus data sesi
+        </Button>
+        <Button type="button" className="h-11 rounded-xl px-6" onClick={onExitAssessment}>
+          <CheckIcon className="size-4" />
+          Selesai
+        </Button>
+      </div>
+
+      <Dialog open={wipeDialogOpen} onOpenChange={setWipeDialogOpen}>
+        <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl tracking-[-0.04em]">Hapus data sesi?</DialogTitle>
+            <DialogDescription className="text-base leading-7">
+              Gunakan ini jika peserta tidak menyetujui penyimpanan data setelah hasil dilihat.
+              Sesi, rekaman lokal, output model, dan report training untuk sesi ini akan dihapus
+              dari perangkat ini.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl bg-card"
+              disabled={saving}
+              onClick={() => setWipeDialogOpen(false)}
+            >
+              Kembali
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-xl"
+              disabled={saving}
+              onClick={() => {
+                setWipeDialogOpen(false)
+                onWipeSession()
+              }}
+            >
+              {saving ? 'Menghapus...' : 'Hapus'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+function ResultSummary({
+  result,
+  classification,
+  isSecure,
+  oppositeLabel,
+  oppositeClassification,
+  saving,
+  postAssessmentNoteUpdatedAt,
+  noteDraft,
+  setNoteDraft,
+  noteDirty,
+  setPendingFeedback,
+  onSavePostAssessmentNote
+}: {
+  result: AssessmentController['state']['result']
+  classification: string | null
+  isSecure: boolean
+  oppositeLabel: 'secure' | 'insecure' | null
+  oppositeClassification: string | null
+  saving: boolean
+  postAssessmentNoteUpdatedAt: string | null
+  noteDraft: string
+  setNoteDraft: React.Dispatch<React.SetStateAction<string>>
+  noteDirty: boolean
+  setPendingFeedback: React.Dispatch<React.SetStateAction<PendingFeedback | null>>
+  onSavePostAssessmentNote: (text: string) => void
+}): React.JSX.Element {
+  return (
+    <>
       {result ? (
         <>
           <section className="overflow-hidden rounded-[28px] border border-border/70 bg-card/95 shadow-[var(--shadow-card)]">
@@ -1504,102 +1693,7 @@ function ResultStage({
           Tidak ada prediksi untuk sesi ini.
         </div>
       )}
-
-      <Dialog
-        open={Boolean(pendingFeedback)}
-        onOpenChange={(open) => {
-          if (!open) setPendingFeedback(null)
-        }}
-      >
-        <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl tracking-[-0.04em]">Ubah hasil asesmen?</DialogTitle>
-            <DialogDescription className="text-base leading-7">
-              {pendingFeedback?.verdict === 'correct'
-                ? `Hasil akan ditandai sesuai sebagai ${classification}.`
-                : `Hasil akan ditandai tidak sesuai dan dikoreksi menjadi ${
-                    pendingFeedback?.correctedLabel === 'secure' ? 'Secure' : 'Insecure'
-                  }.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-xl bg-card"
-              disabled={saving}
-              onClick={() => setPendingFeedback(null)}
-            >
-              Kembali
-            </Button>
-            <Button
-              type="button"
-              className="rounded-xl"
-              disabled={saving || !pendingFeedback}
-              onClick={() => {
-                if (!pendingFeedback) return
-                onSubmitFeedback(pendingFeedback.verdict, pendingFeedback.correctedLabel)
-                setPendingFeedback(null)
-              }}
-            >
-              {saving ? 'Menyimpan...' : 'Ubah hasil'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex items-center justify-center gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 rounded-xl bg-card px-5"
-          onClick={() => setWipeDialogOpen(true)}
-        >
-          <Trash2Icon className="size-4" />
-          Hapus data sesi
-        </Button>
-        <Button type="button" className="h-11 rounded-xl px-6" onClick={onExitAssessment}>
-          <CheckIcon className="size-4" />
-          Selesai
-        </Button>
-      </div>
-
-      <Dialog open={wipeDialogOpen} onOpenChange={setWipeDialogOpen}>
-        <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl tracking-[-0.04em]">Hapus data sesi?</DialogTitle>
-            <DialogDescription className="text-base leading-7">
-              Gunakan ini jika peserta tidak menyetujui penyimpanan data setelah hasil dilihat.
-              Sesi, rekaman lokal, output model, dan report training untuk sesi ini akan dihapus
-              dari perangkat ini.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-xl bg-card"
-              disabled={saving}
-              onClick={() => setWipeDialogOpen(false)}
-            >
-              Kembali
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-xl"
-              disabled={saving}
-              onClick={() => {
-                setWipeDialogOpen(false)
-                onWipeSession()
-              }}
-            >
-              {saving ? 'Menghapus...' : 'Hapus'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </>
   )
 }
 
@@ -1714,12 +1808,14 @@ function formatDateTime(value: string): string {
   return new Date(value).toLocaleString('id-ID')
 }
 
+const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+  month: 'short',
+  day: '2-digit',
+  year: 'numeric'
+})
+
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric'
-  }).format(new Date(value))
+  return dateFormatter.format(new Date(value))
 }
 
 function formatModelVersion(value: string): string {

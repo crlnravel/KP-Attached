@@ -29,16 +29,19 @@ export function AppSidebar({
   onSignOut,
   userRole = 'psychologist'
 }: AppSidebarProps): React.JSX.Element {
-  const visibleNavGroups: SidebarNavGroup[] = navGroups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) =>
-        item.view === 'admin'
-          ? userRole === 'admin'
-          : userRole !== 'admin' || item.view !== 'dashboard'
-      )
-    }))
-    .filter((group) => group.items.length > 0)
+  const visibleNavGroups = navGroups.reduce<SidebarNavGroup[]>((groups, group) => {
+    const items = group.items.filter((item) =>
+      item.view === 'admin'
+        ? userRole === 'admin'
+        : userRole !== 'admin' || item.view !== 'dashboard'
+    )
+
+    if (items.length > 0) {
+      groups.push({ ...group, items })
+    }
+
+    return groups
+  }, [])
 
   return (
     <Sidebar
@@ -63,7 +66,7 @@ export function AppSidebar({
           <SidebarMenu className="gap-2">
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+                className="bg-primary text-primary-foreground transition-colors duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
                 size="lg"
                 asChild
                 tooltip="Buka asesmen"

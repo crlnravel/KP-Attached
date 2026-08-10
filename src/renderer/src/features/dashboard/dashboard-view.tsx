@@ -114,7 +114,7 @@ export function DashboardView({
       )
     })
 
-    return [...visibleRows].sort((a, b) => compareRows(a, b, sort))
+    return visibleRows.toSorted((a, b) => compareRows(a, b, sort))
   }, [patientRows, query, sort])
 
   const handleSort = (key: SortKey): void => {
@@ -253,6 +253,66 @@ export function DashboardView({
   }
 
   return (
+    <DashboardListPage
+      snapshot={snapshot}
+      isLoading={isLoading}
+      error={error}
+      actionError={actionError}
+      activeSession={activeSession}
+      query={query}
+      onQueryChange={setQuery}
+      sort={sort}
+      handleSort={handleSort}
+      filteredPatients={filteredPatients}
+      onSelectPatient={setSelectedPatientKey}
+      onOpenSession={onOpenSession}
+      busyAbortSessionId={busyAbortSessionId}
+      confirmAbortSessionId={confirmAbortSessionId}
+      onRequestAbort={setConfirmAbortSessionId}
+      onCloseAbort={() => setConfirmAbortSessionId(null)}
+      onSubmitAbort={() => void submitAbort()}
+    />
+  )
+}
+
+function DashboardListPage({
+  snapshot,
+  isLoading,
+  error,
+  actionError,
+  activeSession,
+  query,
+  onQueryChange,
+  sort,
+  handleSort,
+  filteredPatients,
+  onSelectPatient,
+  onOpenSession,
+  busyAbortSessionId,
+  confirmAbortSessionId,
+  onRequestAbort,
+  onCloseAbort,
+  onSubmitAbort
+}: {
+  snapshot: DashboardSnapshot | null
+  isLoading: boolean
+  error: string | null
+  actionError: string | null
+  activeSession: SessionRecord | null
+  query: string
+  onQueryChange: (value: string) => void
+  sort: { key: SortKey; direction: SortDirection }
+  handleSort: (key: SortKey) => void
+  filteredPatients: PatientRow[]
+  onSelectPatient: (patientKey: string) => void
+  onOpenSession: (sessionId: string) => void
+  busyAbortSessionId: string | null
+  confirmAbortSessionId: string | null
+  onRequestAbort: (sessionId: string) => void
+  onCloseAbort: () => void
+  onSubmitAbort: () => void
+}): React.JSX.Element {
+  return (
     <div className="detail-enter flex h-full min-h-0 flex-col gap-8">
       <PageHeading eyebrow={`${getGreeting()}, ${snapshot?.user.fullName ?? 'R'}`} title="Dasbor" />
 
@@ -265,7 +325,7 @@ export function DashboardView({
             label="Cari"
             hideLabel
             value={query}
-            onChange={setQuery}
+            onChange={onQueryChange}
             placeholder="Cari nama atau ID pasien"
             icon={SearchIcon}
             className="w-full max-w-sm"
@@ -312,7 +372,7 @@ export function DashboardView({
                 variant="outline"
                 className="rounded-xl border-destructive/25 bg-card text-destructive hover:bg-destructive/8 hover:text-destructive"
                 disabled={busyAbortSessionId === activeSession.id}
-                onClick={() => setConfirmAbortSessionId(activeSession.id)}
+                onClick={() => onRequestAbort(activeSession.id)}
               >
                 {busyAbortSessionId === activeSession.id ? 'Membatalkan...' : 'Batalkan sesi'}
               </Button>
@@ -358,11 +418,11 @@ export function DashboardView({
                   key={row.key}
                   tabIndex={0}
                   className="cursor-pointer border-border transition hover:bg-muted/35 focus-visible:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                  onClick={() => setSelectedPatientKey(row.key)}
+                  onClick={() => onSelectPatient(row.key)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      setSelectedPatientKey(row.key)
+                      onSelectPatient(row.key)
                     }
                   }}
                 >
@@ -394,7 +454,7 @@ export function DashboardView({
         open={confirmAbortSessionId !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setConfirmAbortSessionId(null)
+            onCloseAbort()
           }
         }}
       >
@@ -412,7 +472,7 @@ export function DashboardView({
               type="button"
               variant="outline"
               className="rounded-xl bg-card"
-              onClick={() => setConfirmAbortSessionId(null)}
+              onClick={onCloseAbort}
             >
               Pertahankan sesi
             </Button>
@@ -421,7 +481,7 @@ export function DashboardView({
               variant="destructive"
               className="rounded-xl"
               disabled={!confirmAbortSessionId || busyAbortSessionId === confirmAbortSessionId}
-              onClick={() => void submitAbort()}
+              onClick={() => void onSubmitAbort()}
             >
               {busyAbortSessionId && confirmAbortSessionId === busyAbortSessionId
                 ? 'Membatalkan...'
@@ -835,14 +895,16 @@ function SortableHead({
   const isActive = sort.key === sortKey
 
   return (
-    <TableHead className={cn('px-4', align === 'right' && 'text-right')}>
+    <TableHead
+      className={cn('px-4', align === 'right' && 'text-right')}
+      aria-sort={isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
       <button
         type="button"
         className={cn(
           'inline-flex w-full items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition hover:text-foreground',
           align === 'right' && 'justify-end'
         )}
-        aria-sort={isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
         onClick={() => onSort(sortKey)}
       >
         {label}
@@ -886,22 +948,25 @@ function statusTone(
   return 'default'
 }
 
+const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+  month: 'short',
+  day: '2-digit',
+  year: 'numeric'
+})
+const dateTimeFormatter = new Intl.DateTimeFormat('id-ID', {
+  month: 'short',
+  day: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit'
+})
+
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric'
-  }).format(new Date(value))
+  return dateFormatter.format(new Date(value))
 }
 
 function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value))
+  return dateTimeFormatter.format(new Date(value))
 }
 
 function formatPercent(value: number): string {

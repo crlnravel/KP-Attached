@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { AppTextField, PageHeading, StatusNotice } from '@/components/app-ui'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -51,7 +51,7 @@ export function ProfileView({
   const [profileForm, setProfileForm] = useState<UpdatePsychologistProfileInput>(() =>
     createProfileForm(user)
   )
-  const [settingsEmail, setSettingsEmail] = useState(user.username)
+  const [settingsEmail, setSettingsEmail] = useState(() => user.username)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -62,11 +62,6 @@ export function ProfileView({
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resettingData, setResettingData] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    setProfileForm(createProfileForm(user))
-    setSettingsEmail(user.username)
-  }, [user])
 
   const initials = user.fullName
     .split(/\s+/)
@@ -230,232 +225,32 @@ export function ProfileView({
         </StatusNotice>
       ) : null}
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof profileTabs)[number])}>
-        <TabsList variant="line" className="w-full justify-start border-b border-border/70">
-          {profileTabs.map((item) => (
-            <TabsTrigger key={item} value={item} className="px-4">
-              {profileTabLabels[item]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="profile" className="pt-6">
-          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card/55">
-            <ProfileSection title="Informasi dasar">
-              <ProfileRow label="Nama lengkap" value={user.profile.legalName} />
-              <ProfileRow label="Tanggal lahir" value={displayDate(user.profile.birthDate)} />
-              <ProfileRow label="Email kerja" value={user.username} />
-              <ProfileRow
-                label="Telepon profesional"
-                value={displayValue(user.profile.professionalPhone)}
-              />
-            </ProfileSection>
-
-            <ProfileSection title="Praktik">
-              <ProfileRow
-                label="Organisasi praktik"
-                value={displayValue(user.profile.practiceOrganization)}
-              />
-              <ProfileRow
-                label="Area kekhususan"
-                value={displayValue(user.profile.specialtyArea)}
-              />
-              <ProfileRow
-                label="Alamat praktik"
-                value={displayValue(user.profile.practiceAddress)}
-                multiline
-              />
-            </ProfileSection>
-
-            <ProfileSection title="Kredensial">
-              <ProfileRow
-                label="Jenis kredensial"
-                value={humanizeLicenseType(user.profile.licenseType)}
-              />
-              <ProfileRow
-                label="Nomor STR / SSP"
-                value={displayValue(user.profile.licenseNumber)}
-              />
-              <ProfileRow
-                label="Wilayah HIMPSI"
-                value={displayValue(user.profile.licenseJurisdiction)}
-              />
-              <ProfileRow
-                label="Lembaga penerbit"
-                value={displayValue(user.profile.issuingBoard)}
-              />
-              <ProfileRow label="Terbit" value={displayDate(user.profile.licenseIssuedAt)} />
-              <ProfileRow label="Kedaluwarsa" value={displayDate(user.profile.licenseExpiresAt)} />
-              <ProfileRow label="Nomor SIPP / SIPPK" value={displayValue(user.profile.npiNumber)} />
-            </ProfileSection>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="settings" className="pt-6">
-          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card/55">
-            <SettingsSection title="Foto profil">
-              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-4">
-                  <Avatar className="size-20 border border-border bg-surface-warm text-lg text-foreground">
-                    {profileForm.avatarDataUrl ? (
-                      <AvatarImage src={profileForm.avatarDataUrl} alt={profileForm.legalName} />
-                    ) : null}
-                    <AvatarFallback>{initials || 'A'}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-xl bg-card"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Unggah gambar
-                    </Button>
-                    {profileForm.avatarDataUrl ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="justify-start px-0"
-                        onClick={() => handleProfileFieldChange('avatarDataUrl', '')}
-                      >
-                        Hapus gambar
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleAvatarSelected}
-                />
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Informasi dasar">
-              <div className="grid gap-4 md:grid-cols-2">
-                <AppTextField
-                  label="Nama lengkap"
-                  value={profileForm.legalName}
-                  onChange={(value) => handleProfileFieldChange('legalName', value)}
-                />
-                <AppTextField
-                  label="Tanggal lahir"
-                  type="date"
-                  value={profileForm.birthDate}
-                  onChange={(value) => handleProfileFieldChange('birthDate', value)}
-                />
-                <AppTextField
-                  label="Telepon profesional"
-                  value={profileForm.professionalPhone}
-                  onChange={(value) => handleProfileFieldChange('professionalPhone', value)}
-                />
-                <AppTextField
-                  label="Organisasi praktik"
-                  value={profileForm.practiceOrganization}
-                  onChange={(value) => handleProfileFieldChange('practiceOrganization', value)}
-                />
-                <AppTextField
-                  label="Area kekhususan"
-                  value={profileForm.specialtyArea}
-                  onChange={(value) => handleProfileFieldChange('specialtyArea', value)}
-                />
-                <div className="md:col-span-2">
-                  <AppTextField
-                    label="Alamat praktik"
-                    value={profileForm.practiceAddress}
-                    onChange={(value) => handleProfileFieldChange('practiceAddress', value)}
-                    multiline
-                  />
-                </div>
-              </div>
-              <div className="mt-5 flex justify-end">
-                <Button
-                  type="button"
-                  className="rounded-xl"
-                  disabled={savingProfile}
-                  onClick={handleSaveProfile}
-                >
-                  {savingProfile ? 'Menyimpan...' : 'Simpan profil'}
-                </Button>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Email">
-              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                <AppTextField
-                  label="Email kerja"
-                  type="email"
-                  value={settingsEmail}
-                  onChange={setSettingsEmail}
-                />
-                <Button
-                  type="button"
-                  className="rounded-xl"
-                  disabled={savingEmail}
-                  onClick={handleSaveEmail}
-                >
-                  {savingEmail ? 'Menyimpan...' : 'Simpan email'}
-                </Button>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Kata sandi">
-              <div className="grid gap-4 md:grid-cols-3">
-                <AppTextField
-                  label="Kata sandi saat ini"
-                  type="password"
-                  value={currentPassword}
-                  onChange={setCurrentPassword}
-                />
-                <AppTextField
-                  label="Kata sandi baru"
-                  type="password"
-                  value={newPassword}
-                  onChange={setNewPassword}
-                />
-                <AppTextField
-                  label="Konfirmasi kata sandi"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={setConfirmPassword}
-                />
-              </div>
-              <div className="mt-5 flex justify-end">
-                <Button
-                  type="button"
-                  className="rounded-xl"
-                  disabled={savingPassword}
-                  onClick={handleSavePassword}
-                >
-                  {savingPassword ? 'Menyimpan...' : 'Ubah kata sandi'}
-                </Button>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Data lokal">
-              <div className="flex flex-col gap-4">
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Hapus seluruh akun lokal, sesi asesmen, hasil analisis, dan artefak rekaman dari
-                  workstation ini.
-                </p>
-                <div>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="rounded-xl"
-                    disabled={resettingData}
-                    onClick={() => setResetDialogOpen(true)}
-                  >
-                    Hapus data lokal
-                  </Button>
-                </div>
-              </div>
-            </SettingsSection>
-          </div>
-        </TabsContent>
-      </Tabs>
+      <ProfileTabs
+        tab={tab}
+        setTab={(value) => setTab(value)}
+        user={user}
+        profileForm={profileForm}
+        initials={initials}
+        fileInputRef={fileInputRef}
+        handleAvatarSelected={handleAvatarSelected}
+        handleProfileFieldChange={handleProfileFieldChange}
+        savingProfile={savingProfile}
+        handleSaveProfile={handleSaveProfile}
+        settingsEmail={settingsEmail}
+        setSettingsEmail={setSettingsEmail}
+        savingEmail={savingEmail}
+        handleSaveEmail={handleSaveEmail}
+        currentPassword={currentPassword}
+        setCurrentPassword={setCurrentPassword}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        confirmPassword={confirmPassword}
+        setConfirmPassword={setConfirmPassword}
+        savingPassword={savingPassword}
+        handleSavePassword={handleSavePassword}
+        resettingData={resettingData}
+        onOpenResetDialog={() => setResetDialogOpen(true)}
+      />
 
       <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <DialogContent className="rounded-[28px] border-border/60 bg-card/98 shadow-[var(--shadow-floating)] sm:max-w-lg">
@@ -489,6 +284,278 @@ export function ProfileView({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function ProfileTabs({
+  tab,
+  setTab,
+  user,
+  profileForm,
+  initials,
+  fileInputRef,
+  handleAvatarSelected,
+  handleProfileFieldChange,
+  savingProfile,
+  handleSaveProfile,
+  settingsEmail,
+  setSettingsEmail,
+  savingEmail,
+  handleSaveEmail,
+  currentPassword,
+  setCurrentPassword,
+  newPassword,
+  setNewPassword,
+  confirmPassword,
+  setConfirmPassword,
+  savingPassword,
+  handleSavePassword,
+  resettingData,
+  onOpenResetDialog
+}: {
+  tab: (typeof profileTabs)[number]
+  setTab: (value: (typeof profileTabs)[number]) => void
+  user: LocalUser
+  profileForm: UpdatePsychologistProfileInput
+  initials: string
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  handleAvatarSelected: (event: React.ChangeEvent<HTMLInputElement>) => void
+  handleProfileFieldChange: (field: keyof UpdatePsychologistProfileInput, value: string) => void
+  savingProfile: boolean
+  handleSaveProfile: () => Promise<void>
+  settingsEmail: string
+  setSettingsEmail: (value: string) => void
+  savingEmail: boolean
+  handleSaveEmail: () => Promise<void>
+  currentPassword: string
+  setCurrentPassword: (value: string) => void
+  newPassword: string
+  setNewPassword: (value: string) => void
+  confirmPassword: string
+  setConfirmPassword: (value: string) => void
+  savingPassword: boolean
+  handleSavePassword: () => Promise<void>
+  resettingData: boolean
+  onOpenResetDialog: () => void
+}): React.JSX.Element {
+  return (
+    <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof profileTabs)[number])}>
+      <TabsList variant="line" className="w-full justify-start border-b border-border/70">
+        {profileTabs.map((item) => (
+          <TabsTrigger key={item} value={item} className="px-4">
+            {profileTabLabels[item]}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      <TabsContent value="profile" className="pt-6">
+        <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card/55">
+          <ProfileSection title="Informasi dasar">
+            <ProfileRow label="Nama lengkap" value={user.profile.legalName} />
+            <ProfileRow label="Tanggal lahir" value={displayDate(user.profile.birthDate)} />
+            <ProfileRow label="Email kerja" value={user.username} />
+            <ProfileRow
+              label="Telepon profesional"
+              value={displayValue(user.profile.professionalPhone)}
+            />
+          </ProfileSection>
+
+          <ProfileSection title="Praktik">
+            <ProfileRow
+              label="Organisasi praktik"
+              value={displayValue(user.profile.practiceOrganization)}
+            />
+            <ProfileRow label="Area kekhususan" value={displayValue(user.profile.specialtyArea)} />
+            <ProfileRow
+              label="Alamat praktik"
+              value={displayValue(user.profile.practiceAddress)}
+              multiline
+            />
+          </ProfileSection>
+
+          <ProfileSection title="Kredensial">
+            <ProfileRow
+              label="Jenis kredensial"
+              value={humanizeLicenseType(user.profile.licenseType)}
+            />
+            <ProfileRow label="Nomor STR / SSP" value={displayValue(user.profile.licenseNumber)} />
+            <ProfileRow
+              label="Wilayah HIMPSI"
+              value={displayValue(user.profile.licenseJurisdiction)}
+            />
+            <ProfileRow label="Lembaga penerbit" value={displayValue(user.profile.issuingBoard)} />
+            <ProfileRow label="Terbit" value={displayDate(user.profile.licenseIssuedAt)} />
+            <ProfileRow label="Kedaluwarsa" value={displayDate(user.profile.licenseExpiresAt)} />
+            <ProfileRow label="Nomor SIPP / SIPPK" value={displayValue(user.profile.npiNumber)} />
+          </ProfileSection>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="settings" className="pt-6">
+        <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card/55">
+          <SettingsSection title="Foto profil">
+            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <Avatar className="size-20 border border-border bg-surface-warm text-lg text-foreground">
+                  {profileForm.avatarDataUrl ? (
+                    <AvatarImage src={profileForm.avatarDataUrl} alt={profileForm.legalName} />
+                  ) : null}
+                  <AvatarFallback>{initials || 'A'}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl bg-card"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Unggah gambar
+                  </Button>
+                  {profileForm.avatarDataUrl ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="justify-start px-0"
+                      onClick={() => handleProfileFieldChange('avatarDataUrl', '')}
+                    >
+                      Hapus gambar
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarSelected}
+              />
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Informasi dasar">
+            <div className="grid gap-4 md:grid-cols-2">
+              <AppTextField
+                label="Nama lengkap"
+                value={profileForm.legalName}
+                onChange={(value) => handleProfileFieldChange('legalName', value)}
+              />
+              <AppTextField
+                label="Tanggal lahir"
+                type="date"
+                value={profileForm.birthDate}
+                onChange={(value) => handleProfileFieldChange('birthDate', value)}
+              />
+              <AppTextField
+                label="Telepon profesional"
+                value={profileForm.professionalPhone}
+                onChange={(value) => handleProfileFieldChange('professionalPhone', value)}
+              />
+              <AppTextField
+                label="Organisasi praktik"
+                value={profileForm.practiceOrganization}
+                onChange={(value) => handleProfileFieldChange('practiceOrganization', value)}
+              />
+              <AppTextField
+                label="Area kekhususan"
+                value={profileForm.specialtyArea}
+                onChange={(value) => handleProfileFieldChange('specialtyArea', value)}
+              />
+              <div className="md:col-span-2">
+                <AppTextField
+                  label="Alamat praktik"
+                  value={profileForm.practiceAddress}
+                  onChange={(value) => handleProfileFieldChange('practiceAddress', value)}
+                  multiline
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={savingProfile}
+                onClick={handleSaveProfile}
+              >
+                {savingProfile ? 'Menyimpan...' : 'Simpan profil'}
+              </Button>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Email">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <AppTextField
+                label="Email kerja"
+                type="email"
+                value={settingsEmail}
+                onChange={setSettingsEmail}
+              />
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={savingEmail}
+                onClick={handleSaveEmail}
+              >
+                {savingEmail ? 'Menyimpan...' : 'Simpan email'}
+              </Button>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Kata sandi">
+            <div className="grid gap-4 md:grid-cols-3">
+              <AppTextField
+                label="Kata sandi saat ini"
+                type="password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+              />
+              <AppTextField
+                label="Kata sandi baru"
+                type="password"
+                value={newPassword}
+                onChange={setNewPassword}
+              />
+              <AppTextField
+                label="Konfirmasi kata sandi"
+                type="password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+              />
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={savingPassword}
+                onClick={handleSavePassword}
+              >
+                {savingPassword ? 'Menyimpan...' : 'Ubah kata sandi'}
+              </Button>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Data lokal">
+            <div className="flex flex-col gap-4">
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                Hapus seluruh akun lokal, sesi asesmen, hasil analisis, dan artefak rekaman dari
+                workstation ini.
+              </p>
+              <div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="rounded-xl"
+                  disabled={resettingData}
+                  onClick={() => onOpenResetDialog()}
+                >
+                  Hapus data lokal
+                </Button>
+              </div>
+            </div>
+          </SettingsSection>
+        </div>
+      </TabsContent>
+    </Tabs>
   )
 }
 
@@ -575,10 +642,12 @@ function humanizeLicenseType(value: LocalUser['profile']['licenseType']): string
   return 'Kredensial psikolog lainnya'
 }
 
+const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+  month: 'short',
+  day: '2-digit',
+  year: 'numeric'
+})
+
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric'
-  }).format(new Date(value))
+  return dateFormatter.format(new Date(value))
 }

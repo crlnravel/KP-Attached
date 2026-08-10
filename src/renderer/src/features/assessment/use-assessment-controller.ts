@@ -72,7 +72,7 @@ export type AssessmentController = {
     startExposureRecording: () => Promise<void>
     stopExposureRecording: () => void
     startResponseRecording: () => Promise<void>
-    stopResponseRecording: () => void
+    stopResponseRecording: (onComplete?: () => void) => void
     setAnswer: (index: number, value: number) => void
     startInference: () => Promise<void>
     returnToReview: () => Promise<void>
@@ -104,6 +104,7 @@ type PendingResponseArtifacts = {
   slot: number
   responseBlob: Blob | null
   audioBlob: Blob | null
+  onComplete?: () => void
 }
 
 function pickSupportedMimeType(candidates: string[]): string | null {
@@ -340,10 +341,13 @@ export function useAssessmentController({
     setCaptures(nextSession.draft.captures)
     setPostAssessmentNote(nextSession.postAssessmentNote.text)
     setPostAssessmentNoteUpdatedAt(nextSession.postAssessmentNote.updatedAt)
+    const fallbackIndex = firstIncompleteSlot(nextSession.draft.captures)
+    const shouldInitializeSlot = initializedSlotSessionIdRef.current !== nextSession.id
+    if (shouldInitializeSlot) {
+      initializedSlotSessionIdRef.current = nextSession.id
+    }
     setCurrentSlotIndex((current) => {
-      const fallbackIndex = firstIncompleteSlot(nextSession.draft.captures)
-      if (initializedSlotSessionIdRef.current !== nextSession.id) {
-        initializedSlotSessionIdRef.current = nextSession.id
+      if (shouldInitializeSlot) {
         return fallbackIndex
       }
 
@@ -482,6 +486,9 @@ export function useAssessmentController({
         if (previewVideoRef.current) {
           previewVideoRef.current.srcObject = stream
           await previewVideoRef.current.play()
+          if (cancelled) {
+            return
+          }
           setVideoReady(true)
         }
 
@@ -504,6 +511,9 @@ export function useAssessmentController({
 
         previewAnimationRef.current = window.requestAnimationFrame(tick)
       } catch (previewFailure) {
+        if (cancelled) {
+          return
+        }
         setPreviewError(
           previewFailure instanceof Error ? previewFailure.message : 'Pratinjau tidak tersedia.'
         )
@@ -514,6 +524,10 @@ export function useAssessmentController({
 
     return () => {
       cancelled = true
+      if (previewAnimationRef.current !== null) {
+        window.cancelAnimationFrame(previewAnimationRef.current)
+        previewAnimationRef.current = null
+      }
       stopPreview()
     }
   }, [isActive, step, stopPreview])
@@ -742,10 +756,15 @@ export function useAssessmentController({
         return
       }
 
+      const onComplete = pendingArtifacts.onComplete
       pendingResponseArtifactsRef.current = null
       setSaving(true)
+      let persisted = false
       void persistArtifact(slot, 'response', pendingArtifacts.responseBlob)
         .then(() => persistArtifact(slot, 'audio', pendingArtifacts.audioBlob as Blob))
+        .then(() => {
+          persisted = true
+        })
         .catch((recordingError) => {
           setError(
             recordingError instanceof Error
@@ -758,6 +777,9 @@ export function useAssessmentController({
           setRecordingMode(null)
           responseVideoRecorderRef.current = null
           responseAudioRecorderRef.current = null
+          if (persisted) {
+            onComplete?.()
+          }
         })
     },
     [persistArtifact]
@@ -934,12 +956,13 @@ export function useAssessmentController({
     }
   }, [currentSlotIndex, persistResponseArtifactsIfReady, selectedVideoMimeType])
 
-  const stopResponseRecording = useCallback((): void => {
+  const stopResponseRecording = useCallback((onComplete?: () => void): void => {
     const audioHandle = responseAudioRecorderRef.current
     const pendingArtifacts = pendingResponseArtifactsRef.current
 
     if (audioHandle && pendingArtifacts) {
       pendingArtifacts.audioBlob = finalizeWavRecorder(audioHandle)
+      pendingArtifacts.onComplete = onComplete
     }
 
     stopRecorder(responseVideoRecorderRef.current)

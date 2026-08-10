@@ -110,6 +110,14 @@ type TrainingReportRow = {
   feedback_submitted_at: string
 }
 
+function requireConfiguredAdminPassword(): string {
+  const password = process.env.ATTACHED_ADMIN_PASSWORD
+  if (!password) {
+    throw new Error('ATTACHED_ADMIN_PASSWORD must be set before starting the local backend.')
+  }
+  return password
+}
+
 const ATTACHMENT_EXPERIMENT = 'rerunacc6522b22_evaq'
 const MODEL_VERSION = 'v1.0'
 const CONSENT_VERSION = 'local-consent-v1'
@@ -118,7 +126,7 @@ const CONSENT_STATEMENT =
 const LOCAL_ADMIN_EMAIL = normalizeUsername(
   process.env.ATTACHED_ADMIN_EMAIL ?? 'admin@attached.local'
 )
-const LOCAL_ADMIN_PASSWORD = process.env.ATTACHED_ADMIN_PASSWORD ?? 'admin12345'
+const LOCAL_ADMIN_PASSWORD = requireConfiguredAdminPassword()
 const ACTIVE_SESSION_STATES: SessionState[] = ['draft', 'ready_for_inference', 'running_inference']
 const SESSION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000
 const SMOKE_TEST_MODE = process.env.ATTACHED_SMOKE_TEST === '1'
@@ -1672,12 +1680,10 @@ export class LocalBackend {
     const payload = Buffer.from(input.data)
     await fs.mkdir(dirname(filePath), { recursive: true })
     await fs.writeFile(filePath, payload)
-    const artifactMirrorPath = await this.mirrorRecordingArtifact(input, payload)
-    const participantTestArtifactPath = await this.mirrorParticipantTestArtifact(
-      session,
-      input,
-      payload
-    )
+    const [artifactMirrorPath, participantTestArtifactPath] = await Promise.all([
+      this.mirrorRecordingArtifact(input, payload),
+      this.mirrorParticipantTestArtifact(session, input, payload)
+    ])
 
     const artifact: CaptureArtifact = {
       path: filePath,
@@ -2712,19 +2718,18 @@ export class LocalBackend {
 
   private async pruneExpiredSessions(userId: string): Promise<void> {
     const cutoff = Date.now() - SESSION_RETENTION_MS
-    const sessions = this.listSessionsInternal(userId)
-
-    for (const session of sessions) {
+    const expiredSessions = this.listSessionsInternal(userId).filter((session) => {
       if (ACTIVE_SESSION_STATES.includes(session.state)) {
-        continue
+        return false
       }
 
       const referenceDate = session.completedAt ?? session.updatedAt
-      if (new Date(referenceDate).getTime() >= cutoff) {
-        continue
-      }
+      return new Date(referenceDate).getTime() < cutoff
+    })
 
-      await this.deleteSessionRecord(session.id)
+    await Promise.all(expiredSessions.map((session) => this.deleteSessionRecord(session.id)))
+
+    for (const session of expiredSessions) {
       this.writeAuditEvent('retention.delete_expired_session', session.id, {
         completedAt: session.completedAt,
         updatedAt: session.updatedAt,

@@ -284,7 +284,7 @@ export function LoginView({
     }
 
     const reader = new FileReader()
-    reader.addEventListener('load', () => {
+    reader.onload = () => {
       if (typeof reader.result !== 'string') {
         return
       }
@@ -296,536 +296,50 @@ export function LoginView({
         dataUrl: reader.result,
         uploadedAt: new Date().toISOString()
       })
-    })
+    }
     reader.readAsDataURL(file)
   }
 
   return (
     <>
-      <main className="min-h-screen bg-background text-foreground lg:h-screen lg:overflow-hidden">
-        <section className="mx-auto flex min-h-screen w-full max-w-screen-2xl flex-col px-4 py-5 sm:px-6 lg:h-screen lg:min-h-0 lg:flex-row lg:items-stretch lg:gap-8 lg:px-8 lg:py-6">
-          <div className="relative hidden overflow-hidden rounded-[26px] border border-ink/10 bg-capture shadow-[var(--shadow-floating)] xl:flex xl:w-[24rem] xl:flex-col xl:justify-between">
-            <img
-              src={coverImageUrl}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 size-full object-cover opacity-90"
-            />
-            <div className="auth-cover-scrim absolute inset-0" />
-            <div className="auth-cover-grid absolute inset-0" />
-            <div className="relative z-10 p-7 text-capture-foreground">
-              <AttachedWordmark className="text-3xl text-capture-foreground" />
-            </div>
-          </div>
-
-          <div className="relative flex min-h-0 flex-1 items-center justify-center">
-            <div
-              aria-hidden
-              className="workspace-glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-96"
-            />
-
-            <div
-              className={cn(
-                'flex w-full flex-col justify-center gap-5 lg:min-h-0',
-                authMode === 'request_access' ? 'max-w-4xl' : 'max-w-xl'
-              )}
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-2">
-                  <Eyebrow>
-                    {authMode === 'request_access' ? 'Psikolog Indonesia' : 'Masuk psikolog'}
-                  </Eyebrow>
-                  <AttachedWordmark as="h1" className="text-5xl sm:text-6xl" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {authMode === 'request_access' ? (
-                    <button
-                      type="button"
-                      className="font-medium text-foreground underline decoration-primary/35 underline-offset-4 transition hover:text-primary"
-                      onClick={() => handleAuthModeSelection('sign_in')}
-                    >
-                      Sudah punya akun?
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="font-medium text-foreground underline decoration-primary/35 underline-offset-4 transition hover:text-primary"
-                      onClick={() => handleAuthModeSelection('request_access')}
-                    >
-                      Buat akun baru
-                    </button>
-                  )}
-                </p>
-              </div>
-
-              <AppPanel
-                className={cn(
-                  'rounded-[24px] border-primary/12 bg-panel-strong shadow-[var(--shadow-floating)]',
-                  authMode === 'request_access' && 'lg:max-h-[calc(100vh-3rem)] lg:min-h-0'
-                )}
-                contentClassName={cn(
-                  'flex flex-col gap-5',
-                  authMode === 'sign_in' ? 'p-7 sm:p-8' : 'p-5 sm:p-6 lg:min-h-0 lg:p-7'
-                )}
-              >
-                <div
-                  className={cn(
-                    'flex flex-col gap-5',
-                    authMode === 'request_access' && 'lg:min-h-0'
-                  )}
-                >
-                  {authMode === 'request_access' ? (
-                    <div className="flex flex-col gap-3">
-                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                        {accessRequestSteps.map((step, index) => {
-                          const active = step.value === requestStep
-                          const complete = index < requestStepIndex
-                          const locked = index > unlockedStepIndex
-
-                          return (
-                            <button
-                              key={step.value}
-                              type="button"
-                              disabled={locked}
-                              aria-disabled={locked}
-                              className={cn(
-                                'rounded-[18px] border px-3 py-3 text-left transition',
-                                active
-                                  ? 'border-primary/30 bg-primary/6 shadow-sm'
-                                  : complete
-                                    ? 'border-success/25 bg-success-container/55'
-                                    : locked
-                                      ? 'cursor-not-allowed border-border/45 bg-background/30 opacity-55'
-                                      : 'border-border/70 bg-background/50 hover:border-primary/20'
-                              )}
-                              onClick={() => handleStepSelection(step.value, index)}
-                            >
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className={cn(
-                                    'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                                    active
-                                      ? 'bg-primary text-primary-foreground'
-                                      : complete
-                                        ? 'bg-success text-success-foreground'
-                                        : 'bg-muted text-muted-foreground'
-                                  )}
-                                >
-                                  {complete ? <CheckIcon className="size-4" /> : index + 1}
-                                </span>
-                                <span className="text-sm font-semibold text-foreground">
-                                  {step.label}
-                                </span>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div
-                    className={cn(
-                      'flex flex-col gap-4',
-                      authMode === 'request_access' && 'lg:min-h-0'
-                    )}
-                  >
-                    {notice ? (
-                      <StatusNotice tone={notice.tone} title={notice.title}>
-                        {notice.message}
-                      </StatusNotice>
-                    ) : null}
-
-                    {derivedNotice ? (
-                      <StatusNotice tone={derivedNotice.tone} title={derivedNotice.title}>
-                        {derivedNotice.message}
-                      </StatusNotice>
-                    ) : null}
-
-                    <div
-                      className={cn(
-                        'flex flex-col gap-4',
-                        authMode === 'request_access' && 'lg:min-h-0 lg:overflow-auto lg:pr-1'
-                      )}
-                    >
-                      {authMode === 'sign_in' ? (
-                        <section className="flex flex-col gap-5">
-                          <div className="space-y-1">
-                            <h2 className="text-2xl font-semibold tracking-[-0.03em] text-foreground sm:text-3xl">
-                              Masuk
-                            </h2>
-                          </div>
-                          <div className="grid gap-4">
-                            <AppTextField
-                              label="Email kerja"
-                              type="email"
-                              value={email}
-                              onChange={onEmailChange}
-                              icon={MailIcon}
-                              placeholder="nama@klinik.id"
-                              helper="Gunakan email profesional yang terhubung dengan tempat praktik Anda."
-                              error={validationIssues.email ?? null}
-                              inputClassName="h-14 text-base"
-                            />
-                            <AppTextField
-                              label="Kata sandi"
-                              type="password"
-                              value={password}
-                              onChange={onPasswordChange}
-                              icon={KeyRoundIcon}
-                              placeholder="Minimal 8 karakter"
-                              helper="Kata sandi ini melindungi akun workstation ini."
-                              error={validationIssues.password ?? null}
-                              inputClassName="h-14 text-base"
-                            />
-                          </div>
-                        </section>
-                      ) : null}
-
-                      {authMode === 'request_access' && requestStep === 'account' ? (
-                        <>
-                          <section className="flex flex-col gap-4">
-                            <Eyebrow>{currentStep.label}</Eyebrow>
-                            <div className="grid gap-4 lg:grid-cols-2">
-                              <AppTextField
-                                label="Email kerja"
-                                type="email"
-                                value={email}
-                                onChange={onEmailChange}
-                                icon={MailIcon}
-                                placeholder="nama@klinik.id"
-                                helper="Gunakan email profesional yang terhubung dengan tempat praktik Anda."
-                                error={validationIssues.email ?? null}
-                              />
-                              <AppTextField
-                                label="Buat kata sandi"
-                                type="password"
-                                value={password}
-                                onChange={onPasswordChange}
-                                description="Gunakan minimal 8 karakter."
-                                icon={KeyRoundIcon}
-                                placeholder="Minimal 8 karakter"
-                                helper="Kata sandi ini melindungi akun workstation ini."
-                                error={validationIssues.password ?? null}
-                              />
-                            </div>
-                          </section>
-
-                          <section className="flex flex-col gap-4">
-                            <Eyebrow>Identitas</Eyebrow>
-                            <div className="grid gap-4 lg:grid-cols-2">
-                              <AppTextField
-                                label="Nama legal"
-                                value={registration.legalName}
-                                onChange={(value) => onRegistrationChange('legalName', value)}
-                                icon={UserRoundIcon}
-                                placeholder="Dr. Nama Psikolog, M.Psi., Psikolog"
-                                helper="Masukkan nama legal yang tercantum pada STR, SSP, atau SIPP."
-                                error={validationIssues.legalName ?? null}
-                              />
-                              <AppTextField
-                                label="Nomor telepon profesional"
-                                type="tel"
-                                value={registration.professionalPhone}
-                                onChange={(value) =>
-                                  onRegistrationChange('professionalPhone', value)
-                                }
-                                icon={PhoneIcon}
-                                placeholder="+62 812-3456-7890"
-                                helper="Gunakan nomor telepon Indonesia, seperti +62 atau 08."
-                                error={validationIssues.professionalPhone ?? null}
-                              />
-                            </div>
-                          </section>
-                        </>
-                      ) : null}
-
-                      {authMode === 'request_access' && requestStep === 'licensure' ? (
-                        <section className="flex flex-col gap-4">
-                          <Eyebrow>{currentStep.label}</Eyebrow>
-                          <div className="flex flex-wrap gap-2">
-                            {licenseTypeOptions.map((option) => (
-                              <button
-                                key={option.value}
-                                type="button"
-                                className={cn(
-                                  'rounded-full border px-4 py-2 text-sm font-medium transition',
-                                  registration.licenseType === option.value
-                                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                                    : 'border-border/70 bg-background/70 text-muted-foreground hover:border-primary/25 hover:text-foreground'
-                                )}
-                                onClick={() => onRegistrationChange('licenseType', option.value)}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <AppTextField
-                              label="Nomor STR / SSP"
-                              value={registration.licenseNumber}
-                              onChange={(value) => onRegistrationChange('licenseNumber', value)}
-                              icon={BadgeCheckIcon}
-                              placeholder="STR-123456"
-                              helper="Masukkan nomor kredensial psikolog Indonesia sesuai dokumen resmi."
-                              error={validationIssues.licenseNumber ?? null}
-                            />
-                            <AppTextField
-                              label="Wilayah HIMPSI"
-                              value={registration.licenseJurisdiction}
-                              onChange={(value) =>
-                                onRegistrationChange('licenseJurisdiction', value)
-                              }
-                              icon={MapPinIcon}
-                              placeholder="HIMPSI Wilayah DKI Jakarta"
-                              helper="Wilayah atau yurisdiksi yang tercantum pada kredensial."
-                              error={validationIssues.licenseJurisdiction ?? null}
-                            />
-                            <AppTextField
-                              label="Lembaga penerbit"
-                              value={registration.issuingBoard}
-                              onChange={(value) => onRegistrationChange('issuingBoard', value)}
-                              icon={Building2Icon}
-                              placeholder="HIMPSI / KTKI"
-                              helper="Organisasi yang tercantum pada kredensial."
-                              error={validationIssues.issuingBoard ?? null}
-                            />
-                            <AppTextField
-                              label="Tanggal terbit kredensial"
-                              type="date"
-                              value={registration.licenseIssuedAt}
-                              onChange={(value) => onRegistrationChange('licenseIssuedAt', value)}
-                              icon={CalendarDaysIcon}
-                              helper="Tanggal kredensial diterbitkan."
-                              error={validationIssues.licenseIssuedAt ?? null}
-                            />
-                            <AppTextField
-                              label="Tanggal kedaluwarsa kredensial"
-                              type="date"
-                              value={registration.licenseExpiresAt}
-                              onChange={(value) => onRegistrationChange('licenseExpiresAt', value)}
-                              icon={CalendarDaysIcon}
-                              helper="Kredensial harus masih aktif sampai hari ini."
-                              error={validationIssues.licenseExpiresAt ?? null}
-                            />
-                            <AppTextField
-                              label="Nomor SIPP / SIPPK"
-                              value={registration.npiNumber}
-                              onChange={(value) => onRegistrationChange('npiNumber', value)}
-                              icon={BadgeCheckIcon}
-                              placeholder="SIPP-3171-2026-001"
-                              helper="Nomor izin praktik atau rujukan SIPP/SIPPK setempat."
-                              error={validationIssues.npiNumber ?? null}
-                            />
-                          </div>
-                        </section>
-                      ) : null}
-
-                      {authMode === 'request_access' && requestStep === 'practice' ? (
-                        <section className="flex flex-col gap-4">
-                          <Eyebrow>{currentStep.label}</Eyebrow>
-                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <PsychologyDegreeSelect
-                              value={registration.doctoralDegree}
-                              error={validationIssues.doctoralDegree ?? null}
-                              onChange={(value) => onRegistrationChange('doctoralDegree', value)}
-                            />
-                            <AppTextField
-                              label="Institusi pendidikan"
-                              value={registration.degreeInstitution}
-                              onChange={(value) => onRegistrationChange('degreeInstitution', value)}
-                              icon={Building2Icon}
-                              placeholder="Universitas Indonesia"
-                              helper="Institusi yang menerbitkan ijazah atau sertifikat pendidikan."
-                              error={validationIssues.degreeInstitution ?? null}
-                            />
-                            <AppTextField
-                              label="Tahun kelulusan yang menjadi dasar"
-                              value={registration.degreeGraduationYear}
-                              onChange={(value) =>
-                                onRegistrationChange('degreeGraduationYear', value)
-                              }
-                              icon={CalendarDaysIcon}
-                              placeholder="2020"
-                              helper="Gunakan tahun yang tercetak pada ijazah atau sertifikat profesi psikologi yang menjadi dasar."
-                              error={validationIssues.degreeGraduationYear ?? null}
-                            />
-                            <AppTextField
-                              label="Organisasi praktik"
-                              value={registration.practiceOrganization}
-                              onChange={(value) =>
-                                onRegistrationChange('practiceOrganization', value)
-                              }
-                              icon={Building2Icon}
-                              placeholder="Klinik Psikologi Attached"
-                              helper="Klinik, rumah sakit, sekolah, atau tempat praktik tempat sistem digunakan."
-                              error={validationIssues.practiceOrganization ?? null}
-                            />
-                            <AppTextField
-                              label="Area kekhususan"
-                              value={registration.specialtyArea}
-                              onChange={(value) => onRegistrationChange('specialtyArea', value)}
-                              icon={BadgeCheckIcon}
-                              placeholder="Psikolog Klinis Anak dan Remaja"
-                              helper="Kekhususan klinis utama untuk alur CDSS ini."
-                              error={validationIssues.specialtyArea ?? null}
-                            />
-                            <div className="md:col-span-2 xl:col-span-3">
-                              <AppTextField
-                                label="Alamat praktik"
-                                value={registration.practiceAddress}
-                                onChange={(value) => onRegistrationChange('practiceAddress', value)}
-                                multiline
-                                icon={MapPinIcon}
-                                placeholder={'Jl. Cikini Raya No. 10\nMenteng\nJakarta Pusat 10330'}
-                                helper="Lokasi praktik yang terhubung dengan organisasi yang diajukan."
-                                error={validationIssues.practiceAddress ?? null}
-                              />
-                            </div>
-                          </div>
-                        </section>
-                      ) : null}
-
-                      {authMode === 'request_access' && requestStep === 'documents' ? (
-                        <section className="flex flex-col gap-4">
-                          <Eyebrow>{currentStep.label}</Eyebrow>
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            {documentRequirements.map((requirement) => (
-                              <DocumentUploadCard
-                                key={requirement.kind}
-                                requirement={requirement}
-                                document={registration.documents[requirement.kind]}
-                                onFileSelected={(fileList) =>
-                                  handleDocumentFileSelection(requirement.kind, fileList)
-                                }
-                                onRemove={() =>
-                                  onRegistrationDocumentChange(requirement.kind, null)
-                                }
-                                onPreview={(document) => setPreviewDocument(document)}
-                                error={
-                                  registration.documents[requirement.kind]
-                                    ? null
-                                    : `${requirement.label} wajib diunggah.`
-                                }
-                              />
-                            ))}
-                          </div>
-                        </section>
-                      ) : null}
-
-                      {authMode === 'request_access' && requestStep === 'review' ? (
-                        <section className="flex flex-col gap-4">
-                          <Eyebrow>{currentStep.label}</Eyebrow>
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            <ReviewCard
-                              title="Akun"
-                              rows={[
-                                ['Email kerja', email],
-                                [
-                                  'Kata sandi',
-                                  password.trim().length >= 8 ? 'Siap' : 'Perlu 8+ karakter'
-                                ],
-                                ['Nama legal', registration.legalName],
-                                ['Telepon profesional', registration.professionalPhone]
-                              ]}
-                            />
-                            <ReviewCard
-                              title="Kredensial"
-                              rows={[
-                                ['Jenis kredensial', humanizeLicenseType(registration.licenseType)],
-                                ['Nomor STR / SSP', registration.licenseNumber],
-                                ['Wilayah HIMPSI', registration.licenseJurisdiction],
-                                ['Lembaga penerbit', registration.issuingBoard],
-                                ['Terbit', registration.licenseIssuedAt],
-                                ['Kedaluwarsa', registration.licenseExpiresAt],
-                                ['Nomor SIPP / SIPPK', registration.npiNumber]
-                              ]}
-                            />
-                            <ReviewCard
-                              title="Praktik"
-                              rows={[
-                                ['Gelar dasar', registration.doctoralDegree],
-                                ['Institusi', registration.degreeInstitution],
-                                ['Tahun dasar', registration.degreeGraduationYear],
-                                ['Organisasi praktik', registration.practiceOrganization],
-                                ['Area kekhususan', registration.specialtyArea],
-                                ['Alamat praktik', registration.practiceAddress]
-                              ]}
-                            />
-                            <ReviewDocumentCard
-                              documents={registration.documents}
-                              onPreview={(document) => setPreviewDocument(document)}
-                            />
-                          </div>
-                        </section>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {error ? (
-                    <StatusNotice
-                      tone="error"
-                      title={authMode === 'request_access' ? 'Permintaan gagal' : 'Gagal masuk'}
-                    >
-                      {error}
-                    </StatusNotice>
-                  ) : null}
-
-                  {authMode === 'sign_in' ? (
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="h-14 rounded-[20px] text-base shadow-[var(--shadow-primary)] sm:text-lg"
-                      disabled={!canSignIn}
-                      onClick={onSignIn}
-                    >
-                      <LogInIcon data-icon="inline-start" />
-                      {submitLabel}
-                    </Button>
-                  ) : (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-12 rounded-[18px]"
-                        disabled={requestStepIndex === 0 || isSubmitting}
-                        onClick={handlePreviousStep}
-                      >
-                        <ArrowLeftIcon data-icon="inline-start" />
-                        Kembali
-                      </Button>
-
-                      {requestStep === 'review' ? (
-                        <Button
-                          type="button"
-                          size="lg"
-                          className="h-[3.25rem] rounded-[18px] shadow-[var(--shadow-primary)]"
-                          disabled={!canSubmitAccessRequest}
-                          onClick={onSubmitAccessRequest}
-                        >
-                          <LogInIcon data-icon="inline-start" />
-                          {submitLabel}
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="lg"
-                          className="h-[3.25rem] rounded-[18px] shadow-[var(--shadow-primary)]"
-                          disabled={!canAdvanceStep}
-                          onClick={handleNextStep}
-                        >
-                          Lanjut
-                          <ArrowRightIcon data-icon="inline-end" />
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </AppPanel>
-            </div>
-          </div>
-        </section>
-      </main>
+      <LoginLayout
+        coverImageUrl={coverImageUrl}
+        authMode={authMode}
+        onAuthModeSelection={handleAuthModeSelection}
+      >
+        <LoginFormPanel
+          authMode={authMode}
+          requestStep={requestStep}
+          currentStep={currentStep}
+          registration={registration}
+          validationIssues={validationIssues}
+          email={email}
+          password={password}
+          onEmailChange={onEmailChange}
+          onPasswordChange={onPasswordChange}
+          onRegistrationChange={onRegistrationChange}
+          handleDocumentFileSelection={handleDocumentFileSelection}
+          onRegistrationDocumentChange={onRegistrationDocumentChange}
+          setPreviewDocument={setPreviewDocument}
+          requestStepIndex={requestStepIndex}
+          unlockedStepIndex={unlockedStepIndex}
+          notice={notice}
+          derivedNotice={derivedNotice}
+          onSignIn={onSignIn}
+          submitLabel={submitLabel}
+          formState={{
+            canSignIn,
+            isSubmitting,
+            canSubmitAccessRequest,
+            canAdvanceStep
+          }}
+          error={error}
+          handleStepSelection={handleStepSelection}
+          handlePreviousStep={handlePreviousStep}
+          onSubmitAccessRequest={onSubmitAccessRequest}
+          handleNextStep={handleNextStep}
+        />
+      </LoginLayout>
       <DocumentPreviewDialog
         document={previewDocument}
         onOpenChange={(open) => {
@@ -835,6 +349,632 @@ export function LoginView({
         }}
       />
     </>
+  )
+}
+
+function LoginLayout({
+  coverImageUrl,
+  authMode,
+  onAuthModeSelection,
+  children
+}: {
+  coverImageUrl: string
+  authMode: AuthFormMode
+  onAuthModeSelection: (value: AuthFormMode) => void
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <main className="min-h-screen bg-background text-foreground lg:h-screen lg:overflow-hidden">
+      <section className="mx-auto flex min-h-screen w-full max-w-screen-2xl flex-col px-4 py-5 sm:px-6 lg:h-screen lg:min-h-0 lg:flex-row lg:items-stretch lg:gap-8 lg:px-8 lg:py-6">
+        <div className="relative hidden overflow-hidden rounded-[26px] border border-ink/10 bg-capture shadow-[var(--shadow-floating)] xl:flex xl:w-[24rem] xl:flex-col xl:justify-between">
+          <img
+            src={coverImageUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 size-full object-cover opacity-90"
+          />
+          <div className="auth-cover-scrim absolute inset-0" />
+          <div className="auth-cover-grid absolute inset-0" />
+          <div className="relative z-10 p-7 text-capture-foreground">
+            <AttachedWordmark className="text-3xl text-capture-foreground" />
+          </div>
+        </div>
+
+        <div className="relative flex min-h-0 flex-1 items-center justify-center">
+          <div
+            aria-hidden
+            className="workspace-glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-96"
+          />
+
+          <div
+            className={cn(
+              'flex w-full flex-col justify-center gap-5 lg:min-h-0',
+              authMode === 'request_access' ? 'max-w-4xl' : 'max-w-xl'
+            )}
+          >
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <Eyebrow>
+                  {authMode === 'request_access' ? 'Psikolog Indonesia' : 'Masuk psikolog'}
+                </Eyebrow>
+                <AttachedWordmark as="h1" className="text-5xl sm:text-6xl" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {authMode === 'request_access' ? (
+                  <button
+                    type="button"
+                    className="font-medium text-foreground underline decoration-primary/35 underline-offset-4 transition hover:text-primary"
+                    onClick={() => onAuthModeSelection('sign_in')}
+                  >
+                    Sudah punya akun?
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="font-medium text-foreground underline decoration-primary/35 underline-offset-4 transition hover:text-primary"
+                    onClick={() => onAuthModeSelection('request_access')}
+                  >
+                    Buat akun baru
+                  </button>
+                )}
+              </p>
+            </div>
+
+            {children}
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+type AccessRequestStepFieldsProps = {
+  authMode: AuthFormMode
+  requestStep: AccessRequestStep
+  currentStep: (typeof accessRequestSteps)[number]
+  registration: PsychologistRegistrationInput
+  validationIssues: ValidationIssueMap
+  email: string
+  password: string
+  onEmailChange: (value: string) => void
+  onPasswordChange: (value: string) => void
+  onRegistrationChange: LoginViewProps['onRegistrationChange']
+  handleDocumentFileSelection: (kind: VerificationDocumentKind, fileList: FileList | null) => void
+  onRegistrationDocumentChange: LoginViewProps['onRegistrationDocumentChange']
+  setPreviewDocument: (document: VerificationDocument | null) => void
+}
+
+function AccessRequestStepFields({
+  authMode,
+  requestStep,
+  currentStep,
+  registration,
+  validationIssues,
+  email,
+  password,
+  onEmailChange,
+  onPasswordChange,
+  onRegistrationChange,
+  handleDocumentFileSelection,
+  onRegistrationDocumentChange,
+  setPreviewDocument
+}: AccessRequestStepFieldsProps): React.JSX.Element {
+  return (
+    <>
+      {authMode === 'request_access' && requestStep === 'account' ? (
+        <>
+          <section className="flex flex-col gap-4">
+            <Eyebrow>{currentStep.label}</Eyebrow>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <AppTextField
+                label="Email kerja"
+                type="email"
+                value={email}
+                onChange={onEmailChange}
+                icon={MailIcon}
+                placeholder="nama@klinik.id"
+                helper="Gunakan email profesional yang terhubung dengan tempat praktik Anda."
+                error={validationIssues.email ?? null}
+              />
+              <AppTextField
+                label="Buat kata sandi"
+                type="password"
+                value={password}
+                onChange={onPasswordChange}
+                description="Gunakan minimal 8 karakter."
+                icon={KeyRoundIcon}
+                placeholder="Minimal 8 karakter"
+                helper="Kata sandi ini melindungi akun workstation ini."
+                error={validationIssues.password ?? null}
+              />
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-4">
+            <Eyebrow>Identitas</Eyebrow>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <AppTextField
+                label="Nama legal"
+                value={registration.legalName}
+                onChange={(value) => onRegistrationChange('legalName', value)}
+                icon={UserRoundIcon}
+                placeholder="Dr. Nama Psikolog, M.Psi., Psikolog"
+                helper="Masukkan nama legal yang tercantum pada STR, SSP, atau SIPP."
+                error={validationIssues.legalName ?? null}
+              />
+              <AppTextField
+                label="Nomor telepon profesional"
+                type="tel"
+                value={registration.professionalPhone}
+                onChange={(value) => onRegistrationChange('professionalPhone', value)}
+                icon={PhoneIcon}
+                placeholder="+62 812-3456-7890"
+                helper="Gunakan nomor telepon Indonesia, seperti +62 atau 08."
+                error={validationIssues.professionalPhone ?? null}
+              />
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {authMode === 'request_access' && requestStep === 'licensure' ? (
+        <section className="flex flex-col gap-4">
+          <Eyebrow>{currentStep.label}</Eyebrow>
+          <div className="flex flex-wrap gap-2">
+            {licenseTypeOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={cn(
+                  'rounded-full border px-4 py-2 text-sm font-medium transition',
+                  registration.licenseType === option.value
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-border/70 bg-background/70 text-muted-foreground hover:border-primary/25 hover:text-foreground'
+                )}
+                onClick={() => onRegistrationChange('licenseType', option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <AppTextField
+              label="Nomor STR / SSP"
+              value={registration.licenseNumber}
+              onChange={(value) => onRegistrationChange('licenseNumber', value)}
+              icon={BadgeCheckIcon}
+              placeholder="STR-123456"
+              helper="Masukkan nomor kredensial psikolog Indonesia sesuai dokumen resmi."
+              error={validationIssues.licenseNumber ?? null}
+            />
+            <AppTextField
+              label="Wilayah HIMPSI"
+              value={registration.licenseJurisdiction}
+              onChange={(value) => onRegistrationChange('licenseJurisdiction', value)}
+              icon={MapPinIcon}
+              placeholder="HIMPSI Wilayah DKI Jakarta"
+              helper="Wilayah atau yurisdiksi yang tercantum pada kredensial."
+              error={validationIssues.licenseJurisdiction ?? null}
+            />
+            <AppTextField
+              label="Lembaga penerbit"
+              value={registration.issuingBoard}
+              onChange={(value) => onRegistrationChange('issuingBoard', value)}
+              icon={Building2Icon}
+              placeholder="HIMPSI / KTKI"
+              helper="Organisasi yang tercantum pada kredensial."
+              error={validationIssues.issuingBoard ?? null}
+            />
+            <AppTextField
+              label="Tanggal terbit kredensial"
+              type="date"
+              value={registration.licenseIssuedAt}
+              onChange={(value) => onRegistrationChange('licenseIssuedAt', value)}
+              icon={CalendarDaysIcon}
+              helper="Tanggal kredensial diterbitkan."
+              error={validationIssues.licenseIssuedAt ?? null}
+            />
+            <AppTextField
+              label="Tanggal kedaluwarsa kredensial"
+              type="date"
+              value={registration.licenseExpiresAt}
+              onChange={(value) => onRegistrationChange('licenseExpiresAt', value)}
+              icon={CalendarDaysIcon}
+              helper="Kredensial harus masih aktif sampai hari ini."
+              error={validationIssues.licenseExpiresAt ?? null}
+            />
+            <AppTextField
+              label="Nomor SIPP / SIPPK"
+              value={registration.npiNumber}
+              onChange={(value) => onRegistrationChange('npiNumber', value)}
+              icon={BadgeCheckIcon}
+              placeholder="SIPP-3171-2026-001"
+              helper="Nomor izin praktik atau rujukan SIPP/SIPPK setempat."
+              error={validationIssues.npiNumber ?? null}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {authMode === 'request_access' && requestStep === 'practice' ? (
+        <section className="flex flex-col gap-4">
+          <Eyebrow>{currentStep.label}</Eyebrow>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <PsychologyDegreeSelect
+              value={registration.doctoralDegree}
+              error={validationIssues.doctoralDegree ?? null}
+              onChange={(value) => onRegistrationChange('doctoralDegree', value)}
+            />
+            <AppTextField
+              label="Institusi pendidikan"
+              value={registration.degreeInstitution}
+              onChange={(value) => onRegistrationChange('degreeInstitution', value)}
+              icon={Building2Icon}
+              placeholder="Universitas Indonesia"
+              helper="Institusi yang menerbitkan ijazah atau sertifikat pendidikan."
+              error={validationIssues.degreeInstitution ?? null}
+            />
+            <AppTextField
+              label="Tahun kelulusan yang menjadi dasar"
+              value={registration.degreeGraduationYear}
+              onChange={(value) => onRegistrationChange('degreeGraduationYear', value)}
+              icon={CalendarDaysIcon}
+              placeholder="2020"
+              helper="Gunakan tahun yang tercetak pada ijazah atau sertifikat profesi psikologi yang menjadi dasar."
+              error={validationIssues.degreeGraduationYear ?? null}
+            />
+            <AppTextField
+              label="Organisasi praktik"
+              value={registration.practiceOrganization}
+              onChange={(value) => onRegistrationChange('practiceOrganization', value)}
+              icon={Building2Icon}
+              placeholder="Klinik Psikologi Attached"
+              helper="Klinik, rumah sakit, sekolah, atau tempat praktik tempat sistem digunakan."
+              error={validationIssues.practiceOrganization ?? null}
+            />
+            <AppTextField
+              label="Area kekhususan"
+              value={registration.specialtyArea}
+              onChange={(value) => onRegistrationChange('specialtyArea', value)}
+              icon={BadgeCheckIcon}
+              placeholder="Psikolog Klinis Anak dan Remaja"
+              helper="Kekhususan klinis utama untuk alur CDSS ini."
+              error={validationIssues.specialtyArea ?? null}
+            />
+            <div className="md:col-span-2 xl:col-span-3">
+              <AppTextField
+                label="Alamat praktik"
+                value={registration.practiceAddress}
+                onChange={(value) => onRegistrationChange('practiceAddress', value)}
+                multiline
+                icon={MapPinIcon}
+                placeholder={'Jl. Cikini Raya No. 10\nMenteng\nJakarta Pusat 10330'}
+                helper="Lokasi praktik yang terhubung dengan organisasi yang diajukan."
+                error={validationIssues.practiceAddress ?? null}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {authMode === 'request_access' && requestStep === 'documents' ? (
+        <section className="flex flex-col gap-4">
+          <Eyebrow>{currentStep.label}</Eyebrow>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {documentRequirements.map((requirement) => (
+              <DocumentUploadCard
+                key={requirement.kind}
+                requirement={requirement}
+                document={registration.documents[requirement.kind]}
+                onFileSelected={(fileList) =>
+                  handleDocumentFileSelection(requirement.kind, fileList)
+                }
+                onRemove={() => onRegistrationDocumentChange(requirement.kind, null)}
+                onPreview={(document) => setPreviewDocument(document)}
+                error={
+                  registration.documents[requirement.kind]
+                    ? null
+                    : `${requirement.label} wajib diunggah.`
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {authMode === 'request_access' && requestStep === 'review' ? (
+        <section className="flex flex-col gap-4">
+          <Eyebrow>{currentStep.label}</Eyebrow>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <ReviewCard
+              title="Akun"
+              rows={[
+                ['Email kerja', email],
+                ['Kata sandi', password.trim().length >= 8 ? 'Siap' : 'Perlu 8+ karakter'],
+                ['Nama legal', registration.legalName],
+                ['Telepon profesional', registration.professionalPhone]
+              ]}
+            />
+            <ReviewCard
+              title="Kredensial"
+              rows={[
+                ['Jenis kredensial', humanizeLicenseType(registration.licenseType)],
+                ['Nomor STR / SSP', registration.licenseNumber],
+                ['Wilayah HIMPSI', registration.licenseJurisdiction],
+                ['Lembaga penerbit', registration.issuingBoard],
+                ['Terbit', registration.licenseIssuedAt],
+                ['Kedaluwarsa', registration.licenseExpiresAt],
+                ['Nomor SIPP / SIPPK', registration.npiNumber]
+              ]}
+            />
+            <ReviewCard
+              title="Praktik"
+              rows={[
+                ['Gelar dasar', registration.doctoralDegree],
+                ['Institusi', registration.degreeInstitution],
+                ['Tahun dasar', registration.degreeGraduationYear],
+                ['Organisasi praktik', registration.practiceOrganization],
+                ['Area kekhususan', registration.specialtyArea],
+                ['Alamat praktik', registration.practiceAddress]
+              ]}
+            />
+            <ReviewDocumentCard
+              documents={registration.documents}
+              onPreview={(document) => setPreviewDocument(document)}
+            />
+          </div>
+        </section>
+      ) : null}
+    </>
+  )
+}
+
+type LoginFormState = {
+  canSignIn: boolean
+  isSubmitting: boolean
+  canSubmitAccessRequest: boolean
+  canAdvanceStep: boolean
+}
+
+type LoginFormPanelProps = AccessRequestStepFieldsProps & {
+  requestStepIndex: number
+  unlockedStepIndex: number
+  notice: LoginNotice
+  derivedNotice: LoginNotice
+  email: string
+  password: string
+  onEmailChange: (value: string) => void
+  onPasswordChange: (value: string) => void
+  onSignIn: () => void
+  submitLabel: string
+  formState: LoginFormState
+  error: string | null
+  handleStepSelection: (step: AccessRequestStep, index: number) => void
+  handlePreviousStep: () => void
+  onSubmitAccessRequest: () => void
+  handleNextStep: () => void
+}
+
+function LoginFormPanel({
+  authMode,
+  requestStep,
+  currentStep,
+  registration,
+  validationIssues,
+  onRegistrationChange,
+  handleDocumentFileSelection,
+  onRegistrationDocumentChange,
+  setPreviewDocument,
+  requestStepIndex,
+  unlockedStepIndex,
+  notice,
+  derivedNotice,
+  email,
+  password,
+  onEmailChange,
+  onPasswordChange,
+  onSignIn,
+  submitLabel,
+  formState,
+  error,
+  handleStepSelection,
+  handlePreviousStep,
+  onSubmitAccessRequest,
+  handleNextStep
+}: LoginFormPanelProps): React.JSX.Element {
+  const { canSignIn, isSubmitting, canSubmitAccessRequest, canAdvanceStep } = formState
+
+  return (
+    <AppPanel
+      className={cn(
+        'rounded-[24px] border-primary/12 bg-panel-strong shadow-[var(--shadow-floating)]',
+        authMode === 'request_access' && 'lg:max-h-[calc(100vh-3rem)] lg:min-h-0'
+      )}
+      contentClassName={cn(
+        'flex flex-col gap-5',
+        authMode === 'sign_in' ? 'p-7 sm:p-8' : 'p-5 sm:p-6 lg:min-h-0 lg:p-7'
+      )}
+    >
+      <div className={cn('flex flex-col gap-5', authMode === 'request_access' && 'lg:min-h-0')}>
+        {authMode === 'request_access' ? (
+          <div className="flex flex-col gap-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {accessRequestSteps.map((step, index) => {
+                const active = step.value === requestStep
+                const complete = index < requestStepIndex
+                const locked = index > unlockedStepIndex
+
+                return (
+                  <button
+                    key={step.value}
+                    type="button"
+                    disabled={locked}
+                    aria-disabled={locked}
+                    className={cn(
+                      'rounded-[18px] border px-3 py-3 text-left transition',
+                      active
+                        ? 'border-primary/30 bg-primary/6 shadow-sm'
+                        : complete
+                          ? 'border-success/25 bg-success-container/55'
+                          : locked
+                            ? 'cursor-not-allowed border-border/45 bg-background/30 opacity-55'
+                            : 'border-border/70 bg-background/50 hover:border-primary/20'
+                    )}
+                    onClick={() => handleStepSelection(step.value, index)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                          active
+                            ? 'bg-primary text-primary-foreground'
+                            : complete
+                              ? 'bg-success text-success-foreground'
+                              : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {complete ? <CheckIcon className="size-4" /> : index + 1}
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">{step.label}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={cn('flex flex-col gap-4', authMode === 'request_access' && 'lg:min-h-0')}>
+          {notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title}>
+              {notice.message}
+            </StatusNotice>
+          ) : null}
+
+          {derivedNotice ? (
+            <StatusNotice tone={derivedNotice.tone} title={derivedNotice.title}>
+              {derivedNotice.message}
+            </StatusNotice>
+          ) : null}
+
+          <div
+            className={cn(
+              'flex flex-col gap-4',
+              authMode === 'request_access' && 'lg:min-h-0 lg:overflow-auto lg:pr-1'
+            )}
+          >
+            {authMode === 'sign_in' ? (
+              <section className="flex flex-col gap-5">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-semibold tracking-[-0.03em] text-foreground sm:text-3xl">
+                    Masuk
+                  </h2>
+                </div>
+                <div className="grid gap-4">
+                  <AppTextField
+                    label="Email kerja"
+                    type="email"
+                    value={email}
+                    onChange={onEmailChange}
+                    icon={MailIcon}
+                    placeholder="nama@klinik.id"
+                    helper="Gunakan email profesional yang terhubung dengan tempat praktik Anda."
+                    error={validationIssues.email ?? null}
+                    inputClassName="h-14 text-base"
+                  />
+                  <AppTextField
+                    label="Kata sandi"
+                    type="password"
+                    value={password}
+                    onChange={onPasswordChange}
+                    icon={KeyRoundIcon}
+                    placeholder="Minimal 8 karakter"
+                    helper="Kata sandi ini melindungi akun workstation ini."
+                    error={validationIssues.password ?? null}
+                    inputClassName="h-14 text-base"
+                  />
+                </div>
+              </section>
+            ) : null}
+
+            <AccessRequestStepFields
+              authMode={authMode}
+              requestStep={requestStep}
+              currentStep={currentStep}
+              registration={registration}
+              validationIssues={validationIssues}
+              email={email}
+              password={password}
+              onEmailChange={onEmailChange}
+              onPasswordChange={onPasswordChange}
+              onRegistrationChange={onRegistrationChange}
+              handleDocumentFileSelection={handleDocumentFileSelection}
+              onRegistrationDocumentChange={onRegistrationDocumentChange}
+              setPreviewDocument={setPreviewDocument}
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <StatusNotice
+            tone="error"
+            title={authMode === 'request_access' ? 'Permintaan gagal' : 'Gagal masuk'}
+          >
+            {error}
+          </StatusNotice>
+        ) : null}
+
+        {authMode === 'sign_in' ? (
+          <Button
+            type="button"
+            size="lg"
+            className="h-14 rounded-[20px] text-base shadow-[var(--shadow-primary)] sm:text-lg"
+            disabled={!canSignIn}
+            onClick={onSignIn}
+          >
+            <LogInIcon data-icon="inline-start" />
+            {submitLabel}
+          </Button>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-[18px]"
+              disabled={requestStepIndex === 0 || isSubmitting}
+              onClick={handlePreviousStep}
+            >
+              <ArrowLeftIcon data-icon="inline-start" />
+              Kembali
+            </Button>
+
+            {requestStep === 'review' ? (
+              <Button
+                type="button"
+                size="lg"
+                className="h-[3.25rem] rounded-[18px] shadow-[var(--shadow-primary)]"
+                disabled={!canSubmitAccessRequest}
+                onClick={onSubmitAccessRequest}
+              >
+                <LogInIcon data-icon="inline-start" />
+                {submitLabel}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="lg"
+                className="h-[3.25rem] rounded-[18px] shadow-[var(--shadow-primary)]"
+                disabled={!canAdvanceStep}
+                onClick={handleNextStep}
+              >
+                Lanjut
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </AppPanel>
   )
 }
 
@@ -1013,6 +1153,7 @@ function PsychologyDegreeSelect({
   error: string | null
   onChange: (value: string) => void
 }): React.JSX.Element {
+  const selectId = useId()
   const currentValue = value.trim()
   const options = psychologyDegreeOptions.includes(currentValue)
     ? psychologyDegreeOptions
@@ -1022,12 +1163,16 @@ function PsychologyDegreeSelect({
 
   return (
     <div className="grid gap-2">
-      <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+      <label
+        htmlFor={selectId}
+        className="flex items-center gap-2 text-sm font-medium text-foreground"
+      >
         <GraduationCapIcon className="size-4 text-muted-foreground" />
         Gelar psikologi yang menjadi dasar
       </label>
       <div className="relative">
         <select
+          id={selectId}
           value={currentValue}
           className={cn(
             'h-12 w-full appearance-none rounded-md border bg-card px-3 text-sm text-foreground shadow-xs outline-none transition focus-visible:ring-2 focus-visible:ring-primary/25',
@@ -1225,6 +1370,7 @@ function DocumentPreviewDialog({
             <iframe
               src={pdfPreviewSource}
               title={document?.fileName ?? 'Pratinjau PDF'}
+              sandbox=""
               className="h-[70vh] w-full border-0 bg-background"
             />
           ) : (
@@ -1250,7 +1396,12 @@ function useDocumentPreviewUrl(document: VerificationDocument | null): string | 
     }
 
     void fetch(document.dataUrl)
-      .then((response) => response.blob())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Gagal memuat pratinjau (${response.status}).`)
+        }
+        return response.blob()
+      })
       .then((blob) => {
         if (cancelled) {
           return

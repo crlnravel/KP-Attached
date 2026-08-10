@@ -9,15 +9,16 @@ ATTACHED has a local account system with two roles:
 
 On startup, the backend ensures that one local admin account exists.
 
-Default credentials:
+The local admin account is bootstrapped on the first startup with:
 
 - email: `admin@attached.local`
-- password: `admin12345`
+- password: the value of `ATTACHED_ADMIN_PASSWORD`
 
-These values can be overridden with:
+There is no built-in password. Set `ATTACHED_ADMIN_PASSWORD` to a unique local secret before starting the app.
+
+The email can be overridden with:
 
 - `ATTACHED_ADMIN_EMAIL`
-- `ATTACHED_ADMIN_PASSWORD`
 
 ## Psychologist onboarding
 

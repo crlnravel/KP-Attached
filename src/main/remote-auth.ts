@@ -73,6 +73,18 @@ function extractMessage(payload: unknown): string | null {
   )
 }
 
+function parseResponseText(text: string): unknown {
+  if (text.trim().length === 0) {
+    return {}
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return { message: text }
+  }
+}
+
 function pickRecord(payload: JsonRecord, keys: string[]): JsonRecord | null {
   for (const key of keys) {
     const value = asRecord(payload[key])
@@ -120,23 +132,13 @@ async function postJson(url: string, payload: JsonRecord, failurePrefix: string)
       signal: controller.signal
     })
 
-    const text = await response.text()
-    let parsed: unknown = {}
-
-    if (text.trim().length > 0) {
-      try {
-        parsed = JSON.parse(text) as unknown
-      } catch {
-        parsed = { message: text }
-      }
-    }
-
     if (!response.ok) {
+      const parsed = parseResponseText(await response.text())
       const detail = extractMessage(parsed) ?? `${response.status} ${response.statusText}`.trim()
       throw new Error(`${failurePrefix} ${detail}`.trim())
     }
 
-    return parsed
+    return parseResponseText(await response.text())
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`${failurePrefix} Layanan persetujuan belum merespons.`)

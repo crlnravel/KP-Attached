@@ -489,6 +489,7 @@ function DocumentPreviewDialog({
             <iframe
               src={pdfPreviewSource}
               title={document?.fileName ?? 'Pratinjau PDF'}
+              sandbox=""
               className="h-[70vh] w-full border-0 bg-background"
             />
           ) : (
@@ -514,7 +515,12 @@ function useDocumentPreviewUrl(document: VerificationDocument | null): string | 
     }
 
     void fetch(document.dataUrl)
-      .then((response) => response.blob())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Gagal memuat pratinjau (${response.status}).`)
+        }
+        return response.blob()
+      })
       .then((blob) => {
         if (cancelled) {
           return

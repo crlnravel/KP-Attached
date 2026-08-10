@@ -106,7 +106,7 @@ export const buildExistingPatientOptions = (sessions: SessionRecord[]): Existing
 
   return Array.from(patientGroups.entries())
     .map(([key, groupedSessions]) => {
-      const sortedSessions = [...groupedSessions].sort(sortSessionsByUpdatedAt)
+      const sortedSessions = groupedSessions.toSorted(sortSessionsByUpdatedAt)
       const latestSession = sortedSessions[0]
 
       return {
@@ -119,7 +119,7 @@ export const buildExistingPatientOptions = (sessions: SessionRecord[]): Existing
         assessmentCount: sortedSessions.length
       }
     })
-    .sort(
+    .toSorted(
       (first, second) =>
         new Date(second.lastUpdated).getTime() - new Date(first.lastUpdated).getTime()
     )
@@ -129,7 +129,7 @@ export const buildPatientRows = (sessions: SessionRecord[]): PatientRow[] => {
   const patientGroups = groupSessionsByPatient(sessions)
 
   return Array.from(patientGroups.entries()).map(([key, groupedSessions]) => {
-    const sortedSessions = [...groupedSessions].sort(sortSessionsByUpdatedAt)
+    const sortedSessions = groupedSessions.toSorted(sortSessionsByUpdatedAt)
     const latestSession = sortedSessions[0]
 
     return {
