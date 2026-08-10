@@ -1,13 +1,13 @@
 # Runtime Contract
 
-This document describes the contract between the Electron app and the external Python runtime in `data_model_KP`.
+This document describes the contract between the Electron app and the external Python runtime in `attached-inference-runtime`.
 
 ## Runtime location
 
 By default, ATTACHED expects the model bundle to exist at:
 
 ```text
-../data_model_KP
+../attached-inference-runtime
 ```
 
 You can override discovery with:
@@ -19,14 +19,20 @@ You can override discovery with:
 
 At startup, the backend searches for a project root that contains one of these launchers:
 
-- `data_model_KP/run_model/run_inference.sh`
-- `data_model_KP/run_model/scripts/run_raw_pipeline_cross_platform.py`
+- `attached-inference-runtime/run_model/run_inference.sh`
+- `web/resources/model-launchers/run_raw_pipeline_cross_platform.py` for Windows
 
 If no valid runtime is found:
 
 - the dashboard still loads
 - inference is blocked
 - the UI warns that the local analysis runtime is not ready
+
+The distributed bundle is named `attached-inference-runtime.zip`. Extract it as
+`attached-inference-runtime/` beside the project, or set `ATTACHED_MODEL_ROOT` to its extracted directory.
+
+The bundle contains only the runtime code, selected model checkpoints/configurations, and requirement files. Its
+Python virtual environments are created separately during deployment.
 
 ## Launchers by platform
 

@@ -52,7 +52,7 @@ Dokumen ini berisi skenario demonstrasi singkat untuk menunjukkan fitur utama AT
 1. Tunjukkan halaman "Data Selesai Didapatkan".
 2. Klik "Lanjut" untuk menjalankan pipeline model lokal.
 3. Tunjukkan status pemrosesan lokal.
-4. Jelaskan bahwa aplikasi memakai artefak raw sesi, ECR-RS, dan backend lokal `data_model_KP/run_model`.
+4. Jelaskan bahwa aplikasi memakai artefak raw sesi, ECR-RS, dan backend lokal `attached-inference-runtime/run_model`.
 
 ## 7. Hasil dan Feedback Klinisi
 
@@ -80,4 +80,4 @@ Dokumen ini berisi skenario demonstrasi singkat untuk menunjukkan fitur utama AT
 
 1. Jelaskan bahwa aplikasi disiapkan sebagai Electron app lokal-first.
 2. Untuk Windows, pipeline memakai launcher Python cross-platform.
-3. Build Windows tetap membutuhkan environment Python Windows di `data_model_KP/run_model/.venv` dan `.venv-mmaction-modern`.
+3. Build Windows tetap membutuhkan environment Python Windows di `attached-inference-runtime/run_model/.venv` dan `.venv-mmaction-modern`.

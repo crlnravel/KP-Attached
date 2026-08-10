@@ -5,7 +5,7 @@
 - Node.js 22+
 - `pnpm`
 - Electron-compatible build tooling for your platform
-- the local Python runtime bundle at `../data_model_KP`, unless you set `ATTACHED_MODEL_ROOT`
+- the local Python runtime bundle at `../attached-inference-runtime`, unless you set `ATTACHED_MODEL_ROOT`
 
 The backend uses `node:sqlite`, Electron 39, and a sibling Python runtime, so a current Node 22+ environment is the safest setup.
 
@@ -84,9 +84,11 @@ Use an approved psychologist account for this flow, not the local admin account.
 
 ## Packaging note for Windows
 
-Windows builds require Windows-compatible Python environments inside `data_model_KP`:
+Windows builds require Windows-compatible Python environments inside the extracted `attached-inference-runtime` bundle:
 
-- `data_model_KP/run_model/.venv/Scripts/python.exe`
-- `data_model_KP/run_model/.venv-mmaction-modern/Scripts/python.exe`
+- `attached-inference-runtime/run_model/.venv/Scripts/python.exe`
+- `attached-inference-runtime/run_model/.venv-mmaction-modern/Scripts/python.exe`
 
 The packaged app uses the cross-platform launcher script from `resources/model-launchers/`.
+
+See [Inference Runtime Bundle](./model-runtime-bundle.md) for the archive contents and deployment handoff.

@@ -14,16 +14,33 @@ asarUnpack:
 extraResources:
   - from: resources/model-launchers
     to: model-launchers
-  - from: ../data_model_KP
-    to: data_model_KP
+  - from: ../attached-inference-runtime
+    to: attached-inference-runtime
     filter:
-      - '**/*'
-      - '!**/__pycache__/**'
-      - '!**/.DS_Store'
-      - '!run_model/.uv-cache/**'
-      - '!run_model/.uv-python/**'
-      - '!run_model/tmp_*/**'
-      - '!run_model/logs/**'
+      - 'attachment_classifier/attachment_binary.py'
+      - 'attachment_classifier/attachment_datamodule_binary.py'
+      - 'attachment_classifier/attachment_dataset.py'
+      - 'attachment_classifier/main_binary.py'
+      - 'lightning_logs/rerunacc6522b22_evaq/version_0/checkpoints/epoch=12-step=26.ckpt'
+      - 'run_model/requirements.txt'
+      - 'run_model/mmaction_requirements.txt'
+      - 'run_model/mmaction_mac_requirements.txt'
+      - 'run_model/run_inference.sh'
+      - 'run_model/run_integrated_pipeline.sh'
+      - 'run_model/run_raw_pipeline.sh'
+      - 'run_model/run_raw_pipeline_mac.sh'
+      - 'run_model/scripts/aggregate_trial_predictions.py'
+      - 'run_model/scripts/build_fused_dataset.py'
+      - 'run_model/scripts/convert_audio_to_mel.py'
+      - 'run_model/scripts/discover_attachment_ckpt.py'
+      - 'run_model/scripts/run_mmaction_inference.py'
+      - 'run_model/scripts/run_mmaction_mac_inference.py'
+      - 'run_model/work_dirs_cache/65exposure_small_cl512_fi2_b8_ep30/65exposure_small_cl512_fi2.py'
+      - 'run_model/work_dirs_cache/65exposure_small_cl512_fi2_b8_ep30/latest.pth'
+      - 'run_model/work_dirs_cache/65_response_video_base_cl512_fi2_b8_ep30/65_response_video_base_cl512_fi2.py'
+      - 'run_model/work_dirs_cache/65_response_video_base_cl512_fi2_b8_ep30/latest.pth'
+      - 'run_model/work_dirs_cache/inc_response_audio_cl32_fi2_ep100/inc_response_audio_cl32_fi2.py'
+      - 'run_model/work_dirs_cache/inc_response_audio_cl32_fi2_ep100/latest.pth'
 win:
   executableName: web
 nsis:

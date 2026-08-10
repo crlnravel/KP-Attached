@@ -43,7 +43,7 @@ flowchart LR
   P --> M["Electron main process"]
   M --> DB["SQLite local database"]
   M --> FS["Local session files and reports"]
-  M --> PY["Bundled Python model runtime (data_model_KP)"]
+  M --> PY["Bundled Python model runtime (attached-inference-runtime)"]
   M -. optional .-> RA["Remote approval service"]
 ```
 
@@ -55,7 +55,7 @@ flowchart LR
 - Tailwind CSS 4
 - Radix UI primitives
 - SQLite via `node:sqlite`
-- Python model runtime in `../data_model_KP`
+- Python model runtime in `../attached-inference-runtime`
 
 ## Getting Started
 
@@ -63,7 +63,7 @@ flowchart LR
 
 - Node.js 22+
 - `pnpm`
-- a local `data_model_KP` runtime next to this project, or `ATTACHED_MODEL_ROOT`
+- a local `attached-inference-runtime` bundle next to this project, or `ATTACHED_MODEL_ROOT`
 - camera and microphone access on the host machine
 
 ### Install
@@ -108,10 +108,10 @@ scripts/           Helper scripts, including Electron smoke testing
 Related external dependency:
 
 ```text
-../data_model_KP
+../attached-inference-runtime
 ```
 
-This sibling directory contains the Python runtime that ATTACHED uses for local inference.
+This sibling directory contains the Python runtime and model assets that ATTACHED uses for local inference.
 
 ## Documentation
 
@@ -120,6 +120,7 @@ This sibling directory contains the Python runtime that ATTACHED uses for local 
 - [Environment Variables](./docs/environment.md)
 - [Authentication and Approval Flow](./docs/authentication.md)
 - [Runtime Contract](./docs/runtime.md)
+- [Inference Runtime Bundle](./docs/model-runtime-bundle.md)
 - [Storage Layout](./docs/storage.md)
 - [Privacy and Retention](./docs/privacy.md)
 - [Demo Flow](./docs/demo-flow.md)

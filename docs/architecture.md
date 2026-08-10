@@ -11,7 +11,7 @@ flowchart LR
   P --> M["Electron main process"]
   M --> DB["SQLite local database"]
   M --> FS["Session files and generated reports"]
-  M --> PY["Python runtime in data_model_KP"]
+  M --> PY["Python runtime in attached-inference-runtime"]
   M -. optional .-> RA["Remote approval service"]
 ```
 

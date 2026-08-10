@@ -119,6 +119,8 @@ function requireConfiguredAdminPassword(): string {
 }
 
 const ATTACHMENT_EXPERIMENT = 'rerunacc6522b22_evaq'
+const MODEL_RUNTIME_DIR_NAME = 'attached-inference-runtime'
+const LEGACY_MODEL_RUNTIME_DIR_NAME = 'data_model_KP'
 const MODEL_VERSION = 'v1.0'
 const CONSENT_VERSION = 'local-consent-v1'
 const CONSENT_STATEMENT =
@@ -934,7 +936,7 @@ export class LocalBackend {
 
   constructor() {
     this.projectRoot = this.resolveProjectRoot()
-    this.modelRoot = join(this.projectRoot, 'data_model_KP')
+    this.modelRoot = this.resolveModelRoot(this.projectRoot)
     this.dataRoot = join(app.getPath('userData'), 'attached-local')
     this.databasePath = join(this.dataRoot, 'attached-local.db')
     this.sessionsRoot = join(this.dataRoot, 'sessions')
@@ -1918,12 +1920,15 @@ export class LocalBackend {
     const explicitModelRoot = process.env.ATTACHED_MODEL_ROOT
       ? resolve(process.env.ATTACHED_MODEL_ROOT)
       : null
-    const explicitProjectRoot =
-      explicitModelRoot && existsSync(join(explicitModelRoot, 'run_model'))
-        ? resolve(explicitModelRoot, '..')
-        : null
+    const explicitProjectRoot = process.env.ATTACHED_PROJECT_ROOT
+      ? resolve(process.env.ATTACHED_PROJECT_ROOT)
+      : null
+
+    if (explicitModelRoot && this.isModelRuntimeRoot(explicitModelRoot)) {
+      return resolve(explicitModelRoot, '..')
+    }
+
     const candidates = [
-      process.env.ATTACHED_PROJECT_ROOT ? resolve(process.env.ATTACHED_PROJECT_ROOT) : null,
       explicitProjectRoot,
       explicitModelRoot,
       process.resourcesPath,
@@ -1934,16 +1939,40 @@ export class LocalBackend {
     ].filter((candidate): candidate is string => Boolean(candidate))
 
     for (const candidate of candidates) {
-      const modelRoot = join(candidate, 'data_model_KP')
-      if (
-        existsSync(join(modelRoot, 'run_model', 'run_inference.sh')) ||
-        existsSync(join(modelRoot, 'run_model', 'scripts', 'run_raw_pipeline_cross_platform.py'))
-      ) {
-        return candidate
+      for (const runtimeDirectory of [MODEL_RUNTIME_DIR_NAME, LEGACY_MODEL_RUNTIME_DIR_NAME]) {
+        if (this.isModelRuntimeRoot(join(candidate, runtimeDirectory))) {
+          return candidate
+        }
       }
     }
 
     throw new Error('Root proyek untuk eksekusi model lokal tidak ditemukan.')
+  }
+
+  private resolveModelRoot(projectRoot: string): string {
+    const explicitModelRoot = process.env.ATTACHED_MODEL_ROOT
+      ? resolve(process.env.ATTACHED_MODEL_ROOT)
+      : null
+
+    if (explicitModelRoot && this.isModelRuntimeRoot(explicitModelRoot)) {
+      return explicitModelRoot
+    }
+
+    for (const runtimeDirectory of [MODEL_RUNTIME_DIR_NAME, LEGACY_MODEL_RUNTIME_DIR_NAME]) {
+      const modelRoot = join(projectRoot, runtimeDirectory)
+      if (this.isModelRuntimeRoot(modelRoot)) {
+        return modelRoot
+      }
+    }
+
+    throw new Error('Paket runtime analisis lokal tidak ditemukan.')
+  }
+
+  private isModelRuntimeRoot(candidate: string): boolean {
+    return (
+      existsSync(join(candidate, 'run_model', 'run_inference.sh')) ||
+      existsSync(join(candidate, 'run_model', 'scripts', 'run_raw_pipeline_cross_platform.py'))
+    )
   }
 
   private resolveDebugSamplePath(label: 'exposure' | 'response' | 'audio'): string | null {

@@ -46,9 +46,12 @@ def resolve_run_dir() -> Path:
     candidates.extend(
         [
             cwd / "run_model",
+            cwd / "attached-inference-runtime" / "run_model",
             cwd / "data_model_KP" / "run_model",
             script_path.parents[1],
+            script_path.parents[1] / "attached-inference-runtime" / "run_model",
             script_path.parents[1] / "data_model_KP" / "run_model",
+            script_path.parents[2] / "attached-inference-runtime" / "run_model",
             script_path.parents[2] / "data_model_KP" / "run_model",
         ]
     )
