@@ -121,6 +121,7 @@ This sibling directory contains the Python runtime and model assets that ATTACHE
 - [Authentication and Approval Flow](./docs/authentication.md)
 - [Runtime Contract](./docs/runtime.md)
 - [Inference Runtime Bundle](./docs/model-runtime-bundle.md)
+- [Research References](./docs/references.md)
 - [Storage Layout](./docs/storage.md)
 - [Privacy and Retention](./docs/privacy.md)
 - [Demo Flow](./docs/demo-flow.md)
@@ -128,4 +129,3 @@ This sibling directory contains the Python runtime and model assets that ATTACHE
 ## Notes
 
 - Only one active assessment session is allowed on a workstation at a time.
-- The package and folder names still use the generic name `web`, but the product implemented here is ATTACHED.

@@ -16,6 +16,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+ATTACHED_RUNTIME_DIRECTORY_NAME = "attached-inference-runtime"
+
 
 def env_value(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -46,13 +48,10 @@ def resolve_run_dir() -> Path:
     candidates.extend(
         [
             cwd / "run_model",
-            cwd / "attached-inference-runtime" / "run_model",
-            cwd / "data_model_KP" / "run_model",
+            cwd / ATTACHED_RUNTIME_DIRECTORY_NAME / "run_model",
             script_path.parents[1],
-            script_path.parents[1] / "attached-inference-runtime" / "run_model",
-            script_path.parents[1] / "data_model_KP" / "run_model",
-            script_path.parents[2] / "attached-inference-runtime" / "run_model",
-            script_path.parents[2] / "data_model_KP" / "run_model",
+            script_path.parents[1] / ATTACHED_RUNTIME_DIRECTORY_NAME / "run_model",
+            script_path.parents[2] / ATTACHED_RUNTIME_DIRECTORY_NAME / "run_model",
         ]
     )
 

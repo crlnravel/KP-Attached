@@ -51,7 +51,7 @@ Run this from the project root:
 ./setup-attached-inference-runtime.sh
 ```
 
-The script uses Python 3.11 for the attachment classifier and modern MMAction environment. If `uv` is installed, it can provision Python 3.11 automatically. On Linux, the legacy MMAction environment defaults to Python 3.8; set `ATTACHED_MMACTION_SETUP_PYTHON` if a different compatible interpreter is required.
+The script uses Python 3.11 for the attachment classifier and modern MMAction environment. If `uv` is installed, it can provision Python 3.11 automatically. On Linux, the MMAction environment defaults to Python 3.8; set `ATTACHED_MMACTION_SETUP_PYTHON` if a different compatible interpreter is required.
 
 Use `--skip-download` when the verified archive is already present, or `--skip-install` when only extraction is needed. The script does not modify the original source checkout.
 

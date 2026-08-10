@@ -119,8 +119,7 @@ function requireConfiguredAdminPassword(): string {
 }
 
 const ATTACHMENT_EXPERIMENT = 'rerunacc6522b22_evaq'
-const MODEL_RUNTIME_DIR_NAME = 'attached-inference-runtime'
-const LEGACY_MODEL_RUNTIME_DIR_NAME = 'data_model_KP'
+const ATTACHED_RUNTIME_DIRECTORY_NAME = 'attached-inference-runtime'
 const MODEL_VERSION = 'v1.0'
 const CONSENT_VERSION = 'local-consent-v1'
 const CONSENT_STATEMENT =
@@ -1939,10 +1938,8 @@ export class LocalBackend {
     ].filter((candidate): candidate is string => Boolean(candidate))
 
     for (const candidate of candidates) {
-      for (const runtimeDirectory of [MODEL_RUNTIME_DIR_NAME, LEGACY_MODEL_RUNTIME_DIR_NAME]) {
-        if (this.isModelRuntimeRoot(join(candidate, runtimeDirectory))) {
-          return candidate
-        }
+      if (this.isModelRuntimeRoot(join(candidate, ATTACHED_RUNTIME_DIRECTORY_NAME))) {
+        return candidate
       }
     }
 
@@ -1958,11 +1955,9 @@ export class LocalBackend {
       return explicitModelRoot
     }
 
-    for (const runtimeDirectory of [MODEL_RUNTIME_DIR_NAME, LEGACY_MODEL_RUNTIME_DIR_NAME]) {
-      const modelRoot = join(projectRoot, runtimeDirectory)
-      if (this.isModelRuntimeRoot(modelRoot)) {
-        return modelRoot
-      }
+    const modelRoot = join(projectRoot, ATTACHED_RUNTIME_DIRECTORY_NAME)
+    if (this.isModelRuntimeRoot(modelRoot)) {
+      return modelRoot
     }
 
     throw new Error('Paket runtime analisis lokal tidak ditemukan.')
